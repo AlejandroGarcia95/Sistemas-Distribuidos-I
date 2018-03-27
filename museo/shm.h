@@ -58,7 +58,7 @@ int shm_create(char* file, size_t size){
 void* shm_attach(int shmid){
 	void* p = shmat(shmid, NULL, 0);
 	if(p == (void*)-1){
-		printf("%d: Error attaching shared memory: %d\n", getpid(), errno);
+		printf("%d: Error attaching shared memory %d: %d\n", getpid(), shmid, errno);
 		exit(-1);
 	}
 	return p;

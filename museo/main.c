@@ -30,7 +30,7 @@ void create_temporal(char* temp_string, int temp_id, char* buff){
 		sprintf(buff, "%s", temp_buff);
 }
 
-void launch_door_process(ap_t* ap_people, int door_id, int semid, int shmid, pid_t* doors_pids){
+void launch_door_process(ap_t* ap_people, int door_id, int semid, int shmid, pid_t* children_pids){
 	// request_queue: where people ask door to enter/exit
 	// response_queue: where door answers people
 	
@@ -67,7 +67,7 @@ void launch_door_process(ap_t* ap_people, int door_id, int semid, int shmid, pid
 		ap_exec(ap_door);
 	}
 	
-	doors_pids[door_id] = pid;
+	children_pids[door_id] = pid;
 	ap_destroy(ap_door);
 	
 	// Add the door request and response queues to ap_people
@@ -91,6 +91,92 @@ void launch_person_process(ap_t* ap_people, int person_id){
 	if (pid == 0) {
 		ap_exec(ap_this_person);
 	}
+	
+	
+}
+
+void launch_guide(ap_t* ap_people, pid_t* children_pids){
+	char buff_req[30], buff_resp[30];
+	create_temporal("tour_request", 0, buff_req);
+	create_temporal("tour_response", 0, buff_resp);
+	
+	// Create queues and get ids
+	int request_queue = msq_create(buff_req);
+	int response_queue = msq_create(buff_resp);
+	
+	// shm and sem of tour
+	int shmid = shm_create("guide.c", sizeof(int));
+	int* aux = (int*) shm_attach(shmid);
+	*aux = 0;
+	shm_detach(aux);
+	int semid = sem_create(1, "guide.c");
+	sem_init(semid, 0, 0);
+	int semid_vacancy = sem_create(1, "person.c");
+	sem_init(semid_vacancy, 0, 1);
+	
+	// Prepare to launch guide child
+	
+	ap_t* ap_guide = ap_create("./guide");
+	if(!ap_guide) {
+		printf("%d: Error creating argv_parser for guide:%d\n", getpid(), errno);
+		exit(-1);
+	}
+	
+	ap_set_int(ap_guide, "tour_request", request_queue);
+	ap_set_int(ap_guide, "tour_response", response_queue);
+	ap_set_int(ap_guide, "shmid_tour", shmid);
+	ap_set_int(ap_guide, "semid_tour", semid);
+	ap_set_int(ap_guide, "semid_vacancy", semid_vacancy);
+
+	// Launch guide!
+	pid_t pid = fork();
+	if (pid < 0) {
+		printf("%d: Error forking: %d\n", getpid(), errno);
+		exit(-1);
+	}
+	if (pid == 0) {
+		ap_exec(ap_guide);
+	}
+	
+	children_pids[DOOR_AMOUNT] = pid;
+	ap_destroy(ap_guide);
+	
+	// Add the guide request and response queues to ap_people
+	ap_set_int(ap_people, "tour_request", request_queue);
+	ap_set_int(ap_people, "tour_response", response_queue);
+	ap_set_int(ap_people, "shmid_tour", shmid);
+	ap_set_int(ap_people, "semid_tour", semid);
+	ap_set_int(ap_people, "semid_vacancy", semid_vacancy);
+}
+
+void release_resources(ap_t* ap_people, int shmid, int semid){
+	shm_destroy(shmid);
+	sem_destroy(semid);
+	int i;
+	for(i = 0; i < DOOR_AMOUNT; i++){
+		// Destroy all queues
+		char req_q_name[40], resp_q_name[40];
+		sprintf(req_q_name, "request_queue_%d", i);
+		sprintf(resp_q_name, "response_queue_%d", i);
+		int req_q, resp_q;
+		ap_get_int(ap_people, req_q_name, &req_q);
+		ap_get_int(ap_people, resp_q_name, &resp_q);
+		msq_destroy(req_q);
+		msq_destroy(resp_q);
+	}
+	int r;
+	ap_get_int(ap_people, "tour_request", &r);
+	msq_destroy(r);
+	ap_get_int(ap_people, "tour_response", &r);
+	msq_destroy(r);
+	ap_get_int(ap_people, "shmid_tour", &shmid);
+	ap_get_int(ap_people, "semid_tour", &semid);
+	shm_destroy(shmid);
+	sem_destroy(semid);
+	ap_get_int(ap_people, "semid_vacancy", &semid);
+	sem_destroy(semid);
+	
+	ap_destroy(ap_people);
 }
 
 int main(int argc, char* argv[]) {
@@ -110,10 +196,12 @@ int main(int argc, char* argv[]) {
 	
 	int i;
 	// Launch all doors
-	pid_t doors_pids[DOOR_AMOUNT] = {};
+	pid_t children_pids[DOOR_AMOUNT + 1] = {};
     for (i = 0; i < DOOR_AMOUNT; i++)
-		launch_door_process(ap_people, i, semid, shmid, doors_pids);
+		launch_door_process(ap_people, i, semid, shmid, children_pids);
 
+
+	launch_guide(ap_people, children_pids);
 	// Emulate people spawning
 	int people_spawned = 0;
 	bool keep_simulating = 1;
@@ -133,26 +221,12 @@ int main(int argc, char* argv[]) {
 		wait(NULL);
 	
 	// Kill all doors
-	for (i = 0; i < DOOR_AMOUNT; i++) 
-		kill(doors_pids[i], SIGTERM);
+	for (i = 0; i < DOOR_AMOUNT + 1; i++) 
+		kill(children_pids[i], SIGTERM);
 	
 	shm_detach(capacity);
 	// If here, destroy all IPC
-	shm_destroy(shmid);
-	sem_destroy(semid);
-	for(i = 0; i < DOOR_AMOUNT; i++){
-		// Destroy all queues
-		char req_q_name[40], resp_q_name[40];
-		sprintf(req_q_name, "request_queue_%d", i);
-		sprintf(resp_q_name, "response_queue_%d", i);
-		int req_q, resp_q;
-		ap_get_int(ap_people, req_q_name, &req_q);
-		ap_get_int(ap_people, resp_q_name, &resp_q);
-		msq_destroy(req_q);
-		msq_destroy(resp_q);
-	}
-	
-	ap_destroy(ap_people);
+	release_resources(ap_people, shmid, semid);
 	return 0;
 }
 	

@@ -1,7 +1,7 @@
 CFLAGS := -g
 VFLAGS := --leak-check=full --show-leak-kinds=all --track-origins=yes
 ARCHIVOS = argv_parser.o
-PROGRAMA = main door person
+PROGRAMA = main door person guide
 
 all: clean $(PROGRAMA)
 
@@ -10,6 +10,9 @@ main: $(ARCHIVOS) main.o
 
 door: $(ARCHIVOS) door.o
 	gcc -o door $^
+
+guide: $(ARCHIVOS) guide.o
+	gcc -o guide $^
 
 person: $(ARCHIVOS) person.o
 	gcc -o person $^

@@ -1,10 +1,16 @@
-#define DOOR_AMOUNT 2
-#define SIMULATE_FOREVER 0	// Set at your own risk
-#define PEOPLE_AMOUNT 9
-#define PEOPLE_TOUR 3
-#define MUSEUM_CAPACITY 9
-#define PERSON_PROB_SPAWNING 60
-#define PERSON_PROB_TOUR 100
+#define DOOR_AMOUNT 3
+#define SIMULATE_FOREVER 0	// If setting this, increase delay timing
+#define PEOPLE_AMOUNT 26
+#define PEOPLE_TOUR 6
+#define MUSEUM_CAPACITY 12
+#define PERSON_PROB_SPAWNING 80
+#define PERSON_PROB_TOUR 80
+// Delay in microseconds
+#define TIME_PERSON_SPAWN 1000
+#define TIME_DOOR_RESP 1500
+#define TIME_PERSON_INSIDE 10000
+#define TIME_TOUR_TIMEOUT 60000
+#define TIME_TOUR_DURATION 8000
 
 #define ACCEPTED 1
 #define REJECTED 2

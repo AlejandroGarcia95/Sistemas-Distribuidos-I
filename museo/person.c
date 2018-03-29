@@ -33,13 +33,14 @@ void take_tour(ap_t* ap, int person_id){
 	
 	msq_rcv(resp_q, &msg, sizeof(message_t), person_id);
 	printf("%d: Person %d is going with the guide\n", getpid(), person_id);
+	usleep(TIME_TOUR_DURATION);
 }
 
 void inside_museum(ap_t* ap, int person_id){
 	if((rand() % 100) <= PERSON_PROB_TOUR)
 		take_tour(ap, person_id);
 	else
-		usleep(30000 + (rand() % 30000)); // Spend some time inside museum
+		usleep(TIME_PERSON_INSIDE + (rand() % TIME_PERSON_INSIDE)); // Spend some time inside museum
 	// Randomly choose door
 	int door_id = rand() % DOOR_AMOUNT;
 	// Retrieve that door queues

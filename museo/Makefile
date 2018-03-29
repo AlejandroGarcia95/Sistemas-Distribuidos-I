@@ -1,7 +1,7 @@
 CFLAGS := -g
 VFLAGS := --leak-check=full --show-leak-kinds=all --track-origins=yes
 ARCHIVOS = argv_parser.o
-PROGRAMA = main door person guide
+PROGRAMA = main door person guide tour_timeout
 
 all: clean $(PROGRAMA)
 
@@ -10,6 +10,10 @@ main: $(ARCHIVOS) main.o
 
 door: $(ARCHIVOS) door.o
 	gcc -o door $^
+
+tour_timeout: $(ARCHIVOS) tour_timeout.o
+	gcc -o tour_timeout $^
+
 
 guide: $(ARCHIVOS) guide.o
 	gcc -o guide $^

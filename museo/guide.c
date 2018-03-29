@@ -35,8 +35,8 @@ int main(int argc, char* argv[]) {
 	while(1) {
 		sem_wait(semid, 0);
 		// All people on tour
-		printf("%d: I am the guide and I'm taking everybody!\n", getpid());
 		sem_wait(semid_vacancy, 0);
+		printf("%d: I am the guide and I'm taking %d people!\n", getpid(), *people_tour);
 		for(i = 0; i < *people_tour; i++){
 			message_t msg = {};
 			msq_rcv(req_q, &msg, sizeof(message_t), 0);

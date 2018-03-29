@@ -95,6 +95,38 @@ void launch_person_process(ap_t* ap_people, int person_id){
 	
 }
 
+
+void launch_tour_timeout(ap_t* ap_guide, pid_t* children_pids){
+	// Launch tour_timeout!
+	ap_t* ap_timeout = ap_create("./tour_timeout");
+	if(!ap_timeout) {
+		printf("%d: Error creating argv_parser for guide:%d\n", getpid(), errno);
+		exit(-1);
+	}
+	
+	int shmid, semid, semid_vacancy;
+	
+	ap_get_int(ap_guide, "shmid_tour", &shmid);
+	ap_get_int(ap_guide, "semid_tour", &semid);
+	ap_get_int(ap_guide, "semid_vacancy", &semid_vacancy);
+	
+	ap_set_int(ap_timeout, "shmid_tour", shmid);
+	ap_set_int(ap_timeout, "semid_tour", semid);
+	ap_set_int(ap_timeout, "semid_vacancy", semid_vacancy);
+	
+	pid_t pid = fork();
+	if (pid < 0) {
+		printf("%d: Error forking: %d\n", getpid(), errno);
+		exit(-1);
+	}
+	if (pid == 0) {
+		ap_exec(ap_timeout);
+	}
+	
+	children_pids[DOOR_AMOUNT + 1] = pid;
+	ap_destroy(ap_timeout);
+}
+
 void launch_guide(ap_t* ap_people, pid_t* children_pids){
 	char buff_req[30], buff_resp[30];
 	create_temporal("tour_request", 0, buff_req);
@@ -138,6 +170,8 @@ void launch_guide(ap_t* ap_people, pid_t* children_pids){
 		ap_exec(ap_guide);
 	}
 	
+	launch_tour_timeout(ap_guide, children_pids);
+	
 	children_pids[DOOR_AMOUNT] = pid;
 	ap_destroy(ap_guide);
 	
@@ -148,6 +182,7 @@ void launch_guide(ap_t* ap_people, pid_t* children_pids){
 	ap_set_int(ap_people, "semid_tour", semid);
 	ap_set_int(ap_people, "semid_vacancy", semid_vacancy);
 }
+
 
 void release_resources(ap_t* ap_people, int shmid, int semid){
 	shm_destroy(shmid);
@@ -196,7 +231,7 @@ int main(int argc, char* argv[]) {
 	
 	int i;
 	// Launch all doors
-	pid_t children_pids[DOOR_AMOUNT + 1] = {};
+	pid_t children_pids[DOOR_AMOUNT + 2] = {}; // doors + guide + tour_timeout
     for (i = 0; i < DOOR_AMOUNT; i++)
 		launch_door_process(ap_people, i, semid, shmid, children_pids);
 
@@ -206,8 +241,9 @@ int main(int argc, char* argv[]) {
 	int people_spawned = 0;
 	bool keep_simulating = 1;
 	while(keep_simulating) {
-		// Every 1000 microseconds, launch person with probability PERSON_PROB_SPAWNING
-		usleep(1000);
+		// Every TIME_PERSON_SPAWN microseconds, launch person 
+		// with probability PERSON_PROB_SPAWNING
+		usleep(TIME_PERSON_SPAWN);
 		if((rand() % 100) <= PERSON_PROB_SPAWNING) {
 			people_spawned++;
 			launch_person_process(ap_people, people_spawned);
@@ -221,7 +257,7 @@ int main(int argc, char* argv[]) {
 		wait(NULL);
 	
 	// Kill all doors
-	for (i = 0; i < DOOR_AMOUNT + 1; i++) 
+	for (i = 0; i < DOOR_AMOUNT + 2; i++) 
 		kill(children_pids[i], SIGTERM);
 	
 	shm_detach(capacity);

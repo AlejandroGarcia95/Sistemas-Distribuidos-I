@@ -38,7 +38,7 @@ int main(int argc, char* argv[]) {
 		msq_rcv(req_q, &msg, sizeof(message_t), 0);
 		printf("%d: I am door %d and have a message from person %ld\n", getpid(), door_id, msg.mtype);
 		
-		usleep(20000 + (rand() % 10000)); // Spend some time processing message
+		usleep(TIME_DOOR_RESP + (rand() % (TIME_DOOR_RESP / 2))); // Spend some time processing message
 		
 		if(msg.msg_type == REQUEST_EXIT) {
 			sem_wait(semid, 0);

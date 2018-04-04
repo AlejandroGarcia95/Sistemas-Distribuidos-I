@@ -28,23 +28,23 @@
 
 
 
-​	El problema que ellos veían (y que les hacía afirmar tal cosa como la complejidad de los ambientes distribuidos) era que los mecanismos de comunicación de procesos eran el "factor limitante" en el desarrollo de aplicaciones distribuidas. Así, RPC permitiría independizar a los programadores de éstos mecanismos, y de los fallos más habituales que ellos conllevan.
+​	El problema que ellos veían (y que les hacía afirmar tal cosa como la complejidad de los ambientes distribuidos) era que los mecanismos de comunicación de procesos eran el "factor limitante" en el desarrollo de aplicaciones distribuidas. Así, RPC permitiría independizar a los programadores de éstos mecanismos, y de los fallos más habituales que ellos conllevan. Según ellos expresan, al generar una comunicación transparente mediante una interfaz de procedimientos, los programadores podrán abstraerse de la existencia de la comunicación y desarrollar aplicaciones de forma similar a la que estaban habituados en una sola máquina.
 
 
 
 ## Estructura
 
-La estructura de RPC permite definir la interfaz de los métodos a través de un lenguaje de especificación denominado IDL (Interface Definition Language). A partir de esta especificación se generan dos piezas de código denominadas _stubs_. Los _stubs_ encapsulan toda la lógica de comunicación entre los procesos remotos así como la serialización de los datos; y proveen al usuario con una API de los métodos tal y como si los llamara localamente. 
+​	La estructura de RPC permite definir la interfaz de los procedimientos remotos a través de un lenguaje de especificación, en nuestro caso el denominado Interface Definition Language (IDL). A partir de esta especificación, se generan dos piezas de código denominadas _stubs_. Los stubs encapsulan toda la lógica de comunicación entre los procesos remotos así como la serialización (_marshalling_) de los datos, y proveen al cliente con una interfaz de los procedimientos tal y como si se los llamara localamente. De esta manera, el cliente puede invocar al procedimiento remoto, delegando todos los aspectos de la comunicación en su stub; y el servidor, que debe tener implementado dicho procedimiento, puede ejecutarlo y devolver al cliente el valor correspondiente.
+
+
 
 ![](image.jpg)
 
+​	En resumen, el flujo de una invocación a un procedimiento con RPC es como el siguiente:
 
+* El cliente llama a la función remota de forma totalmente transparente, como si se tratara de un procedimiento como cualquier otro, sólo que no está implementado en su máquina.
 
-* Client & Server: es el código que escribe el usuario, tanto del lado del cliente como del servidor, y que se enlaza con el 
-
-* Client-stub & server-stub: código autogenerado.
-
-* RPC runtime: librería común de RPC que encapsula el manejo de la red y la serialización de los argumentos y respuesta de los llamados.
+* Continuar
 
   ​
 

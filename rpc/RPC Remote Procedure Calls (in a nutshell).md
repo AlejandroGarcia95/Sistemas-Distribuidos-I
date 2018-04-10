@@ -42,9 +42,21 @@
 
 ​	En resumen, el flujo de una invocación a un procedimiento con RPC es como el siguiente:
 
-* El cliente llama a la función remota de forma totalmente transparente, como si se tratara de un procedimiento como cualquier otro, sólo que no está implementado en su máquina.
+* El cliente llama a la función remota de forma totalmente transparente, como si se tratara de un procedimiento como cualquier otro, sólo que no está implementado en su máquina. Esta llamada es bloqueante y se corresponde a la interfáz definida vía IDL.
 
-* Continuar
+* En la llamda al procedimeinto remoto, el cliente está en realidad comunicándose con el _client-stub_. Se trata de una librería con código autogenerado a partir de la especificación del IDL por una herramienta de RPC (e.g. `rpcgen`).
+
+* El _client-stub_ serializa y codifica la llamada a procedimiento junto con sus parámetros y se los pasa a la librería de RPC para que se encargue de la transmisión al host remoto.
+
+* La librería RPC transmite el mensaje sobre la red, usualmente vía sockets hasta el host remoto.
+
+* El _server-stub_ es también autogenerado por la herramienta, y se encarga de la deserialización y decodifiación del procedimiento; para luego efecutar la llamada correspondiente al código del servidor.
+
+* El servidor recibe la llamada del _server-stub_ y la procesa como si hubiera sido invocada desde el mismo host. La respuesta sigue el mismo camino pero en sentido inverso.
+
+  ​
+
+  Así a partir de la especificación de los procedimientos vía IDL se generan los _stubs_ que se vinculan al código de usuario y hacen de interfaz para RPC.
 
   ​
 

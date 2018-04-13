@@ -44,7 +44,7 @@
 
 * El cliente llama a la función remota de forma totalmente transparente, como si se tratara de un procedimiento como cualquier otro, sólo que no está implementado en su máquina. Esta llamada es bloqueante y se corresponde a la interfáz definida vía IDL.
 
-* En la llamda al procedimeinto remoto, el cliente está en realidad comunicándose con el _client-stub_. Se trata de una librería con código autogenerado a partir de la especificación del IDL por una herramienta de RPC (e.g. `rpcgen`).
+* En la llamada al procedimeinto remoto, el cliente está en realidad comunicándose con el _client-stub_. Se trata de una biblioteca con código autogenerado a partir de la especificación del IDL por una herramienta de RPC (i.e. `rpcgen`).
 
 * El _client-stub_ serializa y codifica la llamada a procedimiento junto con sus parámetros y se los pasa a la librería de RPC para que se encargue de la transmisión al host remoto.
 

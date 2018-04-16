@@ -8,6 +8,7 @@
 
 typedef struct mom_ {
 	int id;
+	int msqid;
 } mom_t;
 
 

@@ -1,10 +1,10 @@
 ## Checkpoints
 
-**0.** Define user process' _mom_ API.
+**0.** Define user process' _mom_ API. 																			**DONE**
 
-**1.** Implement _mom_ requester and sender locally (i.e. without sockets).
+**1.** Implement _mom_ requester and sender locally (i.e. without sockets).											**WIP**
 
-**2.** Create user process and locally interact with _mom_.
+**2.** Create user process and locally interact with _mom_.															**WIP**
 
 **3.** Create broker server to make simple interactions with user's machine's _mom_ via sockets (no forking).
 

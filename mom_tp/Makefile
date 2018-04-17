@@ -15,16 +15,16 @@ all: clean $(PROGRAM) $(DAEMON_PROCESSES) $(MOM_DAEMON)
 
 
 $(PROGRAM): $(LIBS_O) $(SRCS) $(PROGRAM).c
-	gcc -o $(PROGRAM) $^
+	gcc $(CFLAGS) -o $(PROGRAM) $^
 
 $(MOM_DAEMON): $(LIBS_O) $(MOM_DAEMON).c
-	gcc -o $(MOM_DAEMON) $^
+	gcc $(CFLAGS) -o $(MOM_DAEMON) $^
 
 mom_requester: $(LIBS_O) mom_requester.c
-	gcc -o mom_requester $^
+	gcc $(CFLAGS) -o mom_requester $^
 
 mom_responser: $(LIBS_O) mom_responser.c
-	gcc -o mom_responser $^
+	gcc $(CFLAGS) -o mom_responser $^
 	
 run: clean $(PROGRAM) $(DAEMON_PROCESSES) $(MOM_DAEMON)
 	./$(PROGRAM)

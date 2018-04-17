@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <sys/wait.h>
 
+#include "mom_general.h"
 #include "libs/msq.h"
 #include "libs/argv_parser.h"
 
@@ -17,11 +18,15 @@ int main(int argc, char* argv[]){
 	}
 	
 	int msqid, msq_sockets;
-	ap_get_int(ap, "socket", &msqid);
-	ap_get_int(ap, "msq", &msq_sockets);
+	ap_get_int(ap, QUEUE_REQUESTER, &msqid);
+	ap_get_int(ap, "socket", &msq_sockets);
 		
 	printf("Hello! Im requester and have msqid %d and socket %d!\n", msqid, msq_sockets);
 
+	while(1) {
+		mom_message_t m = {0};
+		msq_rcv(msqid, &m, sizeof(mom_message_t), 0);
+	}
 	
 	ap_destroy(ap);
 	exit(0);

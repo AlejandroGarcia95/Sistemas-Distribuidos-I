@@ -7,8 +7,10 @@
 
 
 typedef struct mom_ {
-	int id;
-	int msqid;
+	long local_id;
+	long global_id;
+	int msqid_requester;
+	int msqid_responser;
 } mom_t;
 
 

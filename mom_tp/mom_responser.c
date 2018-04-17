@@ -21,7 +21,16 @@ int main(int argc, char* argv[]){
 	ap_get_int(ap, QUEUE_RESPONSER, &msqid);
 	ap_get_int(ap, "socket", &msq_sockets);
 	
-	printf("Hello! Im responser and have msqid %d and socket %d!\n", msqid, msq_sockets);
+	printf("Daemon responser is up!\n");
+	// Responser main loop
+	while(1) {
+		mom_message_t m = {0};
+		// TODO: Receive from socket
+		msq_rcv(msq_sockets, &m, sizeof(mom_message_t), 0);
+		printf("Received a message from broker!\n");
+		print_message(m);
+		msq_send(msqid, &m, sizeof(mom_message_t));
+	}
 	
 	ap_destroy(ap);
 	exit(0);

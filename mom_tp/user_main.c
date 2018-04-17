@@ -28,12 +28,21 @@ bool parse_command(mom_t* mom, char* buff){
 	switch(l){
 		case 's':
 		case 'S':
-			printf("Subscribing to topic %s.\n", &buff[2]);
+			printf("Subscribing to topic %s...\n", &buff[2]);
+			if(mom_subscribe(mom, &buff[2]))
+				printf("Subscribing successful!\n");
+			else
+				printf("Subscribing failed!\n");
 			return true;
 			
 		case 'r':
 		case 'R':
-			printf("Receiving from topic %s.\n", &buff[2]);
+			printf("Receiving from topic %s...\n", &buff[2]);
+			char msg[BUFF_SIZE];
+			if(mom_receive(mom, &msg))
+				printf("Receiving successful! Message received is: \n%s\n", msg);
+			else
+				printf("Receiving failed!\n");
 			return true;
 			
 		case 'p':
@@ -46,7 +55,11 @@ bool parse_command(mom_t* mom, char* buff){
 			char topic[BUFF_SIZE];
 			strncpy(topic, &buff[2], i - 2);
 			topic[i-2] = '\0';
-			printf("Publishing to topic %s the text %s.\n", topic, &buff[i+1]);
+			printf("Publishing to topic %s the text %s...\n", topic, &buff[i+1]);
+			if(mom_publish(mom, topic, (const char*) &buff[i+1]))
+				printf("Publishing successful!\n");
+			else
+				printf("Publishing failed!\n");
 			return true;
 			
 		case 'e':
@@ -62,11 +75,11 @@ bool parse_command(mom_t* mom, char* buff){
 
 int main(int argc, char* argv[]){
 	printf("User process instance %d has been launched!\n", getpid());
-/*	mom_t* mom = mom_create();
+	mom_t* mom = mom_create();
 	if(!mom) {
 		printf("Something went wrong while creating mom\n");
 		return -1;
-	} */
+	} 
 
 	print_help();
 	bool go_on = true;
@@ -75,9 +88,9 @@ int main(int argc, char* argv[]){
 		char buff[BUFF_SIZE] = {0};
 		fgets(buff, BUFF_SIZE - 1, stdin);
 		buff[strlen(buff) - 1] = '\0'; // Replace newline with null
-		go_on = parse_command(NULL, buff);
+		go_on = parse_command(mom, buff);
 	}
 
-//	mom_destroy(mom);
+	mom_destroy(mom);
 	return 0;
 }

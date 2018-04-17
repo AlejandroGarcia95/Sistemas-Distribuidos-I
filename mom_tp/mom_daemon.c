@@ -43,12 +43,13 @@ bool allocate_resources(ap_t** ap_requester, ap_t** ap_responser) {
 	
 	int msqid_requester = msq_create(QUEUE_REQUESTER);
 	int msqid_responser = msq_create(QUEUE_RESPONSER);
-	int msq_sockets = msq_create("mom_responser.c"); // To mock socket !!
+	int msq_socket_to_broker = msq_create("mom_requester.c"); // To mock socket !!
+	int msq_socket_to_machine = msq_create("mom_responser.c"); // To mock socket !!
 	
 	ap_set_int(*ap_requester, QUEUE_REQUESTER, msqid_requester);
 	ap_set_int(*ap_responser, QUEUE_RESPONSER, msqid_responser);
-	ap_set_int(*ap_requester, "socket", msq_sockets);
-	ap_set_int(*ap_responser, "socket", msq_sockets);
+	ap_set_int(*ap_requester, "socket", msq_socket_to_broker);
+	ap_set_int(*ap_responser, "socket", msq_socket_to_machine);
 	
 	return true;	
 }
@@ -67,13 +68,17 @@ bool launch_process(ap_t* ap, char* process_name) {
 
 void release_resources(ap_t* ap_requester, ap_t* ap_responser) {
 	int msqid_requester, msqid_responser, msq_sockets;
+	
 	ap_get_int(ap_requester, "socket", &msq_sockets);
+	msq_destroy(msq_sockets);
+	ap_get_int(ap_responser, "socket", &msq_sockets);
+	msq_destroy(msq_sockets);
+	
 	ap_get_int(ap_requester, QUEUE_REQUESTER, &msqid_requester);
 	ap_get_int(ap_responser, QUEUE_RESPONSER, &msqid_responser);
 	
 	msq_destroy(msqid_responser);
 	msq_destroy(msqid_requester);
-	msq_destroy(msq_sockets);
 	
 	ap_destroy(ap_responser);
 	ap_destroy(ap_requester);
@@ -91,13 +96,16 @@ int main(int argc, char* argv[]) {
 		return -1;
 	
 	// Launch all mom processes
-	printf("Hello! I am the daemon!\n");
+	printf("Launching mom daemon...\n");
 	
 	if(!launch_process(ap_requester, "mom requester"))
 		return -1;
 	
 	if(!launch_process(ap_responser, "mom responser"))
 		return -1;
+	
+	// Launch all mom processes
+	printf("Mom daemon is fully up!\n");
 	
 	// Release resources when finished
 	wait(NULL);

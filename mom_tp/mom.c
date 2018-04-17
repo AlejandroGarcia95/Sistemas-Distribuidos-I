@@ -18,15 +18,15 @@ void fill_message(mom_message_t* m, mom_t* mom, opcode_t opcode, char* topic, ch
 	m->mtype = mom->local_id;
 	m->opcode = opcode;
 	m->sender_id = mom->local_id;
-	if(topic)	strcpy((char*) m->topic, topic);
-	if(payload)	strcpy((char*) m->payload, payload);
+	if(topic)	strcpy(m->topic, topic);
+	if(payload)	strcpy(m->payload, payload);
 }
 
 void send_message_to_daemon(mom_t* mom, mom_message_t m, mom_message_t* response) {
 	// Send m
 	msq_send(mom->msqid_requester, &m, sizeof(mom_message_t));
 	// Receive answer and store into response
-	msq_rcv(mom->msqid_responser, &response, sizeof(mom_message_t), mom->local_id);
+	msq_rcv(mom->msqid_responser, response, sizeof(mom_message_t), mom->local_id);
 }
 
 
@@ -42,21 +42,26 @@ mom_t* mom_create(){
 	mom->msqid_requester = msq_create(QUEUE_REQUESTER);
 	mom->msqid_responser = msq_create(QUEUE_RESPONSER);
 	// Write and read create message to retrieve mom->global_id
-	mom_message_t m, response = {0};
+	mom_message_t m = {0}, response = {0};
 	fill_message(&m, mom, OC_CREATE, NULL, NULL);
 	send_message_to_daemon(mom, m, &response);
-	// TODO: Retrieve mom->global_id from response
+	// Retrieve mom->global_id from response
+	if((response.opcode != OC_ACK_SUCCESS) && (response.opcode != OC_ACK_FAILURE)) {
+		printf("%d: MOM CRITICAL ON CREATING: Daemon answer was not ACK!\n", getpid());
+		free(mom);
+		return NULL;
+	}
 	mom->global_id = mom->local_id;
 	return mom;
 }
 
 bool mom_publish(mom_t* mom, char* topic, const void *msg){
-	mom_message_t m, response = {0};
+	mom_message_t m = {0}, response = {0};
 	// Write and read publish message
 	fill_message(&m, mom, OC_PUBLISH, topic, (char*) msg);
 	send_message_to_daemon(mom, m, &response);
 	if((response.opcode != OC_ACK_SUCCESS) && (response.opcode != OC_ACK_FAILURE)) {
-		printf("%d: MOM CRITICAL: Daemon answer was not ACK!\n", getpid());
+		printf("%d: MOM CRITICAL ON PUBLISHING: Daemon answer was not ACK!\n", getpid());
 		return false;
 	}
 	
@@ -64,12 +69,12 @@ bool mom_publish(mom_t* mom, char* topic, const void *msg){
 }
 
 bool mom_subscribe(mom_t* mom, char* topic){
-	mom_message_t m, response = {0};
+	mom_message_t m = {0}, response = {0};
 	// Write and read subscribe message
 	fill_message(&m, mom, OC_SUBSCRIBE, topic, NULL);
 	send_message_to_daemon(mom, m, &response);
 	if((response.opcode != OC_ACK_SUCCESS) && (response.opcode != OC_ACK_FAILURE)) {
-		printf("%d: MOM CRITICAL: Daemon answer was not ACK!\n", getpid());
+		printf("%d: MOM CRITICAL ON SUBSCRIBING: Daemon answer was not ACK!\n", getpid());
 		return false;
 	}
 	
@@ -81,7 +86,7 @@ bool mom_receive(mom_t* mom, void* msg){
 	mom_message_t response = {0};
 	msq_rcv(mom->msqid_responser, &response, sizeof(mom_message_t), mom->local_id);
 	if(response.opcode != OC_DELIVERED) {
-		printf("%d: MOM CRITICAL: Daemon has not delivered message!\n", getpid());
+		printf("%d: MOM CRITICAL ON RECEIVING: Daemon has not delivered message!\n", getpid());
 		return false;
 	}
 	// Copy received payload into msg

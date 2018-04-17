@@ -20,12 +20,17 @@ int main(int argc, char* argv[]){
 	int msqid, msq_sockets;
 	ap_get_int(ap, QUEUE_REQUESTER, &msqid);
 	ap_get_int(ap, "socket", &msq_sockets);
-		
-	printf("Hello! Im requester and have msqid %d and socket %d!\n", msqid, msq_sockets);
+	
+	printf("Daemon requester is up!\n");
 
+	// Requester main loop
 	while(1) {
 		mom_message_t m = {0};
 		msq_rcv(msqid, &m, sizeof(mom_message_t), 0);
+		printf("Received a message from user!\n");
+		print_message(m);
+		// TODO: Forward via socket
+		msq_send(msq_sockets, &m, sizeof(mom_message_t));
 	}
 	
 	ap_destroy(ap);

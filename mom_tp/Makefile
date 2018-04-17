@@ -7,15 +7,19 @@ SRCS = mom.o
 PROGRAM = user_main
 DAEMON_PROCESSES = mom_responser mom_requester
 MOM_DAEMON = mom_daemon
+MOCK = broker_mock
 
 
 # ----------------------------------------------------------------------
 
-all: clean $(PROGRAM) $(DAEMON_PROCESSES) $(MOM_DAEMON)
+all: clean $(PROGRAM) $(DAEMON_PROCESSES) $(MOM_DAEMON) $(MOCK)
 
 
 $(PROGRAM): $(LIBS_O) $(SRCS) $(PROGRAM).c
 	gcc $(CFLAGS) -o $(PROGRAM) $^
+
+$(MOCK): $(LIBS_O) $(MOCK).c
+	gcc $(CFLAGS) -o $(MOCK) $^
 
 $(MOM_DAEMON): $(LIBS_O) $(MOM_DAEMON).c
 	gcc $(CFLAGS) -o $(MOM_DAEMON) $^
@@ -29,12 +33,11 @@ mom_responser: $(LIBS_O) mom_responser.c
 run: clean $(PROGRAM) $(DAEMON_PROCESSES) $(MOM_DAEMON)
 	./$(PROGRAM)
 
-
 %.o: %.c
 	gcc $(CFLAGS) -c $< -o $@ 
 
 clean:
-	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES)
+	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(MOCK)
 	rm -f $(LIBS_O)
 	rm -f *~
 	sh ipcrma.sh

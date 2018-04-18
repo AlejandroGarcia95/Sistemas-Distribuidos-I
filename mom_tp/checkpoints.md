@@ -6,7 +6,7 @@
 
 **2.** Create user process and locally interact with _mom_.															**DONE**
 
-**3.** Create broker server to make simple interactions with user's machine's _mom_ via sockets (no forking).
+**3.** Create broker server to make simple interactions with user's machine's _mom_ via sockets (no forking).			**DONE**
 
 **4.** Create DBMS worker and make it persist stuff.
 

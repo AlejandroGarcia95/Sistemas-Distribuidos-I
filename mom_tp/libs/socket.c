@@ -214,3 +214,25 @@ int socket_send(socket_t* self, const char* buffer, size_t size) {
 	}
 	return acum;
 }
+
+
+/*
+ * Gets this socket's file descriptor
+ */
+int socket_get_fd(socket_t* self) {
+	return self->sock;
+}
+
+/*
+ * Creates a new socket of the specified type from a given file descriptor
+ */
+socket_t* socket_create_from_fd(int fd, socket_type type) {
+	if(fd < 0)	return NULL;
+	socket_t* sock = malloc(sizeof(socket_t));
+	if (!sock) return NULL;
+	sock->ai = NULL;
+	sock->peer_sa = SA_ZERO;
+	sock->type = type;
+	sock->sock = fd;
+	return sock;
+}

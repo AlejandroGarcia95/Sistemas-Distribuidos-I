@@ -8,6 +8,7 @@
 
 #include "mom_general.h"
 #include "libs/msq.h"
+#include "libs/socket.h"
 #include "libs/argv_parser.h"
 
 int main(int argc, char* argv[]){
@@ -17,21 +18,28 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
-	int msqid, msq_sockets;
-	ap_get_int(ap, QUEUE_RESPONSER, &msqid);
-	ap_get_int(ap, "socket", &msq_sockets);
+	int msqid, socket_fd;
+	ap_get_int(ap, QUEUE_RESPONSER, &msqid);	
+	ap_get_int(ap, SOCKET_FD, &socket_fd);
+	
+	socket_t* s = socket_create_from_fd(socket_fd, SOCK_ACTIVE);
+	if(!s) {
+		printf("%d: Error creating socket on responser: %d\n", getpid(), errno);
+		exit(-1);
+	}
 	
 	printf("Daemon responser is up!\n");
 	// Responser main loop
 	while(1) {
 		mom_message_t m = {0};
-		// TODO: Receive from socket
-		msq_rcv(msq_sockets, &m, sizeof(mom_message_t), 0);
+		// Receive from socket
+		SOCKET_R(s, mom_message_t, m);
 		printf("Received a message from broker!\n");
 		print_message(m);
 		msq_send(msqid, &m, sizeof(mom_message_t));
 	}
 	
+	socket_destroy(s);
 	ap_destroy(ap);
 	exit(0);
 }

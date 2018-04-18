@@ -51,7 +51,7 @@ mom_t* mom_create(){
 		free(mom);
 		return NULL;
 	}
-	mom->global_id = mom->local_id;
+	mom->global_id = response.sender_id;
 	return mom;
 }
 

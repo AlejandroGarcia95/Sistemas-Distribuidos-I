@@ -7,6 +7,10 @@
 #define QUEUE_REQUESTER "queue_req.temp"
 #define QUEUE_RESPONSER "queue_resp.temp"
 
+#define SOCKET_FD "socket"
+
+#define SERVER_IP "127.0.0.1"
+#define SERVER_PORT "8080"
 
 #define PAYLOAD_SIZE 255
 #define TOPIC_LENGTH 140

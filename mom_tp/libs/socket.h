@@ -60,5 +60,13 @@ int socket_receive(socket_t* self, char* buffer, size_t size);
  */
 int socket_send(socket_t* self, const char* buffer, size_t size);
 
+/*
+ * Gets this socket's file descriptor
+ */
+int socket_get_fd(socket_t* self);
 
+/*
+ * Creates a new socket of the specified type from a given file descriptor
+ */
+socket_t* socket_create_from_fd(int fd, socket_type type);
 #endif // _SOCKET_H

@@ -23,7 +23,6 @@ void handler(int signum) {
 
 void set_handler() {
 	struct sigaction sa;
-	sigset_t sigset;
 
 	sigemptyset(&sa.sa_mask);
 	sa.sa_flags = 0;

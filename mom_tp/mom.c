@@ -51,6 +51,7 @@ mom_t* mom_create(){
 		free(mom);
 		return NULL;
 	}
+	// TODO: Fail if response.opcode == OC_ACK_FAILURE
 	mom->global_id = response.sender_id;
 	return mom;
 }

@@ -8,7 +8,7 @@
 
 **3.** Create broker server to make simple interactions with user's machine's _mom_ via sockets (no forking).			**DONE**
 
-**4.** Create DBMS worker and make it persist stuff.
+**4.** Create DBMS worker and make it persist stuff.															**WIP**
 
 **5.** Make server broker fork the handler, and make it interact with the DBMS worker.
 

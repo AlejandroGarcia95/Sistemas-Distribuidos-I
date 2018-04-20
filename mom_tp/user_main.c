@@ -14,7 +14,7 @@ void print_help(){
 	printf("USAGE:\n\n");
 	printf("Subscribing: S <topic>\n");
 	printf("Publishing: P <topic> <text>\n");
-	printf("Receiving: R <topic>\n\n");
+	printf("Receiving: R\n\n");
 	printf("Exit program: E\n\n");
 }
 
@@ -37,7 +37,7 @@ bool parse_command(mom_t* mom, char* buff){
 			
 		case 'r':
 		case 'R':
-			printf("Receiving from topic %s...\n", &buff[2]);
+			printf("Receiving from mom...\n");
 			char msg[BUFF_SIZE];
 			if(mom_receive(mom, &msg))
 				printf("Receiving successful! Message received is: \n%s\n", msg);

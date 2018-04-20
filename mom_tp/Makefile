@@ -7,8 +7,8 @@ SRCS = mom.o
 PROGRAM = user_main
 DAEMON_PROCESSES = mom_responser mom_requester
 MOM_DAEMON = mom_daemon
-BROKER_PROCESSES = dbms
-BROKER = broker_mock
+BROKER_PROCESSES = dbms broker_handler broker_sender
+BROKER = broker_server
 
 
 # ----------------------------------------------------------------------
@@ -30,6 +30,12 @@ mom_requester: $(LIBS_O) mom_requester.c
 
 dbms: $(LIBS_O) dbms.c
 	gcc $(CFLAGS) -o dbms $^
+
+broker_handler: $(LIBS_O) broker_handler.c
+	gcc $(CFLAGS) -o broker_handler $^
+
+broker_sender: $(LIBS_O) broker_sender.c
+	gcc $(CFLAGS) -o broker_sender $^
 
 mom_responser: $(LIBS_O) mom_responser.c
 	gcc $(CFLAGS) -o mom_responser $^

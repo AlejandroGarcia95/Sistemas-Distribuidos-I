@@ -7,6 +7,10 @@
 #define QUEUE_REQUESTER "queue_req.temp"
 #define QUEUE_RESPONSER "queue_resp.temp"
 
+
+#define QUEUE_HANDLER "queue_handler.temp"
+#define QUEUE_SENDER "queue_sender.temp"
+
 #define SOCKET_FD "socket"
 
 #define SERVER_IP "127.0.0.1"
@@ -28,7 +32,8 @@ typedef enum opcode_ {
 
 
 typedef  struct mom_message_ {
-	long sender_id;
+	long local_id;
+	long global_id;
 	opcode_t opcode;
 	char topic[TOPIC_LENGTH];
 	
@@ -45,7 +50,8 @@ void print_message(mom_message_t m){
 	char* oc_str[] = 	{"CREATE", "DESTROY", "PUBLISH", "SUBSCRIBE", 
 						"ACK_SUCCESS", "ACK_FAILURE", "DELIVERED"};
 	printf("---------------------------------------------------\n");
-	printf("SENDER ID: %ld\n", m.sender_id);
+	printf("LOCAL ID: %ld\n", m.local_id);
+	printf("GLOBAL ID: %ld\n", m.global_id);
 	printf("OPCODE: %s\n", oc_str[(int) m.opcode]);
 	printf("TOPIC: %s\n", m.topic);
 	printf("PAYLOAD: %s \n", m.payload);

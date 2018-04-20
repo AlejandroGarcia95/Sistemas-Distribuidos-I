@@ -21,7 +21,7 @@
 
 // ---------------- Opcode treatment functions ----------------
 
-/* Registers a new user, setting the mom_message sender_id field
+/* Registers a new user, setting the mom_message global_id field
  to the proper global_id of the sender. Sets the message opcode 
  to the proper value depending on success. */
 void register_user(mom_message_t* m, long* global_id) {
@@ -29,7 +29,7 @@ void register_user(mom_message_t* m, long* global_id) {
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
-	m->sender_id = *global_id;
+	m->global_id = *global_id;
 	m->opcode = OC_ACK_SUCCESS;
 	(*global_id)++;
 }
@@ -44,15 +44,15 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 	char topic_path[PATH_MAX] = {0};
 	sprintf(topic_path, "%s%s%s", TOPICS_DIR, m->topic, TOPIC_EXT);
 	// Check user werent already subscribed to topic
-	if(find_pair_id_topic(inv_index, m->sender_id, topic_path) > 0){
+	if(find_pair_id_topic(inv_index, m->global_id, topic_path) > 0){
 		printf("%d: Rejecting subscribing because %ld is already subscribed to %s\n", 
-				getpid(), m->sender_id, topic_path);
+				getpid(), m->global_id, topic_path);
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
 	// Write subscription at inverted index table
 	// TODO: lock inv_index
-	if(!write_pair_id_topic(inv_index, m->sender_id, topic_path)) {
+	if(!write_pair_id_topic(inv_index, m->global_id, topic_path)) {
 		printf("%d: Error writing at invert index: %d\n", getpid(), errno);
 		m->opcode = OC_ACK_FAILURE;
 		return;
@@ -70,7 +70,7 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 	// Write user's global id at the topic's subscribers file
 	char subs_path[PATH_MAX] = {0};
 	topic_to_subscribers(topic_path, subs_path);
-	if(!add_user_at_subscriber_file(subs_path, m->sender_id, topic_path)) {
+	if(!add_user_at_subscriber_file(subs_path, m->global_id, topic_path)) {
 		// Remove pair user topic from inverted index
 		lseek(inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
 		remove_pair_id_topic(inv_index);
@@ -86,7 +86,7 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path){
 	char subs_file[PATH_MAX] = {0};
 	// Copy m into a forwarded message
-	mom_message_t forwarded = {m->sender_id, OC_DELIVERED," ", " ", m->mtype};
+	mom_message_t forwarded = {m->local_id, m->global_id, OC_DELIVERED," ", " ", m->mtype};
 	strcpy(forwarded.topic, m->topic);
 	strcpy(forwarded.payload, m->payload);
 	// Retrieve subscribers file and open it
@@ -101,7 +101,7 @@ bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path){
 	long id; char t[TOPIC_LENGTH];
 	while(read_pair_id_topic(fd, &id, t)) {
 		bool have_to_forward = (strcmp(t, topic_path) == 0);
-		have_to_forward &= (id != m->sender_id); // Dont send messages to the sender
+		have_to_forward &= (id != m->global_id); // Dont send messages to the sender
 		if(have_to_forward) {
 			// TODO: Really forward message
 			printf("I have to forward message to %ld (payload: %s)\n", id, forwarded.payload);
@@ -131,7 +131,7 @@ void publish_message(mom_message_t* m, long* global_id) {
 		return;		
 	}
 	// Write m->payload to the topic file
-	if(!publish_at_topic_file(topic_path, m->sender_id, m->payload)){
+	if(!publish_at_topic_file(topic_path, m->global_id, m->payload)){
 		m->opcode = OC_ACK_FAILURE;
 		return;		
 	}
@@ -161,7 +161,7 @@ void unregister_user(mom_message_t* m, int inv_index, long* global_id) {
 	// Scan inverted index table
 	long id; char t[TOPIC_LENGTH];
 	while(read_pair_id_topic(inv_index, &id, t)) {
-		if(id == m->sender_id) {
+		if(id == m->global_id) {
 			// If here, user is subscribed at topic t
 			// Hence, delete them from there
 			char subs_file[PATH_MAX] = {0};
@@ -235,13 +235,13 @@ int main(int argc, char* argv[]) {
 
 
 void test_stuff(int inv_index, long* global_id){
-	// m = {sender_id, opcode, topic, payload, mtype}
-	mom_message_t m1 = {10, OC_CREATE, "SensorA/Measures/Temperature", "29 Celsius", 22};
-	mom_message_t m2 = {11, OC_CREATE, "SensorA/Measures/Temperature", "23 Celsius", 33};
-	mom_message_t m3 = {12, OC_CREATE, "SensorA/Measures/Temperature", "-10 Celsius", 44};
-	mom_message_t m4 = {13, OC_CREATE, "SensorA/Measures/Temperature", "1 atm", 55};
-	mom_message_t m5 = {14, OC_CREATE, "SensorA/Measures/Temperature", "88%", 66};
-	mom_message_t m6 = {15, OC_CREATE, "SensorA/Measures/Temperature", "31 Celsius", 77};
+	// m = {local_id, global_id, opcode, topic, payload, mtype}
+	mom_message_t m1 = {10, 10, OC_CREATE, "SensorA/Measures/Temperature", "29 Celsius", 22};
+	mom_message_t m2 = {11, 11, OC_CREATE, "SensorA/Measures/Temperature", "23 Celsius", 33};
+	mom_message_t m3 = {12, 12, OC_CREATE, "SensorA/Measures/Temperature", "-10 Celsius", 44};
+	mom_message_t m4 = {13, 13, OC_CREATE, "SensorA/Measures/Temperature", "1 atm", 55};
+	mom_message_t m5 = {14, 14, OC_CREATE, "SensorA/Measures/Temperature", "88%", 66};
+	mom_message_t m6 = {15, 15, OC_CREATE, "SensorA/Measures/Temperature", "31 Celsius", 77};
 	// Create six users
 	register_user(&m1, global_id);
 	register_user(&m2, global_id);

@@ -10,6 +10,6 @@
 
 **4.** Create DBMS worker and make it persist stuff.															**WIP**
 
-**5.** Make server broker fork the handler, and make it interact with the DBMS worker.
+**5.** Make server broker fork the handler, and make it interact with the DBMS worker.								**WIP**
 
-**6.** Make handler fork the sender, and make DBMS interact with it.
+**6.** Make handler fork the sender, and make DBMS interact with it.												**WIP**

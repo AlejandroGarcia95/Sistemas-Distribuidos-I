@@ -17,7 +17,8 @@
 void fill_message(mom_message_t* m, mom_t* mom, opcode_t opcode, char* topic, char* payload) {
 	m->mtype = mom->local_id;
 	m->opcode = opcode;
-	m->sender_id = mom->local_id;
+	m->global_id = mom->global_id;
+	m->local_id = mom->local_id;
 	if(topic)	strcpy(m->topic, topic);
 	if(payload)	strcpy(m->payload, payload);
 }
@@ -38,6 +39,8 @@ mom_t* mom_create(){
 	
 	mom->local_id = getpid(); // Genius
 	
+	mom->global_id = mom->local_id;
+	
 	// Retrieve dameon queues' ids
 	mom->msqid_requester = msq_create(QUEUE_REQUESTER);
 	mom->msqid_responser = msq_create(QUEUE_RESPONSER);
@@ -52,7 +55,7 @@ mom_t* mom_create(){
 		return NULL;
 	}
 	// TODO: Fail if response.opcode == OC_ACK_FAILURE
-	mom->global_id = response.sender_id;
+	mom->global_id = response.global_id;
 	return mom;
 }
 

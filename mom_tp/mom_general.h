@@ -13,7 +13,7 @@
 #define SERVER_PORT "8080"
 
 #define PAYLOAD_SIZE 255
-#define TOPIC_LENGTH 140
+#define TOPIC_LENGTH 100
 
 typedef enum opcode_ {
 	OC_CREATE, 

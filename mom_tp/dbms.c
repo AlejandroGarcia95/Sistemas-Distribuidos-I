@@ -12,202 +12,12 @@
 #include <fcntl.h>
 
 #include "mom_general.h"
+#include "dbfs.h"
 #include "libs/msq.h"
 #include "libs/argv_parser.h"
 
 /* Reality is merely an illusion, albeit a very persistent one.*/
 
-#define TOPICS_DIR "Topics/"
-#define INVERTED_INDEX "inv_index.txt"
-#define TOPIC_EXT ".topic"
-#define SUBS_FILE "subscribers.subs"
-
-#define ID_MAX_LENGTH 10
-#define SUBS_LINE_SIZE (ID_MAX_LENGTH + TOPIC_LENGTH + 2)
-
-// ------------ Auxiliar functions so seriously needed ------------
-
-/* Creates a directory in a beautifully iterative way. Silently 
- does nothing if a subdirectory already exists. If this function
- receives path with a file ending (i.e. home/user/docs/file.txt)
- it DOES NOT create it (only creates the directory to contain it!). */
-bool create_directory(char *path) {
-	char aux[PATH_MAX];
-
-	strcpy(aux, path);
-	// Turn last slash NULL
-	for(int i = strlen(aux) - 1; i >= 0; i--)
-		if(aux[i] == '/') {
-			aux[i + 1] = '\0';
-			break;
-		}
-	// Iterate over directories
-	for(int i = 0; i < strlen(aux); i++)
-		if(aux[i] == '/') {
-			aux[i] = '\0';
-			int r = mkdir(aux, S_IRWXU);
-			if((r < 0) && (errno != EEXIST)) {
-				printf("%d: Error creating directory %s: %d\n", getpid(), aux, errno);
-				return false;
-			}
-			aux[i] = '/';
-		}
-	return true;
-}
-
-/* Creates a file on the given file_path. Silently does nothing
- if such file already exists. Returns true on success. (Note: if
- the file already exists, does nothing and return true). */
-bool create_file(char* file_path) {
-	bool b = create_directory(file_path);
-	if(!b)	return false;
-	int r = mknod(file_path, S_IFREG|0777, 0);
-	if((r < 0) && (errno != EEXIST)){
-		printf("%d: Error creating subscriber file %s: %d\n", getpid(), file_path, errno);
-		return false;
-	}
-	return true;
-}
-
-/* Given a topic file of path topic_path, this functions writes
- to subs_path the path of the proper subscribers path. */
-void topic_to_subscribers(char* topic_path, char* subs_path){
-	char aux[PATH_MAX] = {0};
-	strcpy(aux, topic_path);
-	// Turn last slash NULL
-	int last_slash;
-	for(last_slash = strlen(aux) - 1; last_slash >= 0; last_slash--)
-		if(aux[last_slash] == '/') {
-			aux[last_slash] = '\0';
-			break;
-		}
-	
-	sprintf(subs_path, "%s/%s", aux, SUBS_FILE);
-}
-
-/* Creates a .subs file related to the topic file given.
- If the .subs file already exists, silently does nothing
- and return true. False is returned on error. */
-bool create_subscribers_file(char* topic_path){
-	char subs_path[PATH_MAX];
-
-	topic_to_subscribers(topic_path, subs_path);
-	return create_file(subs_path);
-}
-
-
-/* Creates the inverted_index file, used to store the topics each
- user has subscribed to. Returns the index file descriptor. */
-int create_inverted_index() {
-	int fd = open(INVERTED_INDEX, O_RDWR | O_APPEND | O_CREAT, 0644);
-	if(fd < 0) 
-		printf("%d: Error creating %s: %d\n", getpid(), INVERTED_INDEX, errno);
-	
-	return fd;
-}
-
-/* Writes to PREVIOUSLY OPENED FILE fd a pair user_id vs topic_path, 
- meaning a subscription. Returns true on success, false otherwise.*/
-bool write_pair_id_topic(int fd, long user_id, char* topic_path) {
-	char aux[SUBS_LINE_SIZE] = {0};
-	sprintf(aux, "%ld %s", user_id, topic_path);
-	int len = strlen(aux);
-	// Padding with spaces for fixed size!
-	for(int i = len; i < (SUBS_LINE_SIZE - 1); i++)
-		aux[i] = ' ';
-	aux[SUBS_LINE_SIZE - 1] = '\n';
-	return (write(fd, aux, SUBS_LINE_SIZE) > 0);
-}
-
-/* Reads from PREVIOUSLY OPENED FILE fd a pair user_id vs topic_path, 
- meaning a subscription. Returns true on success, false otherwise.*/
-bool read_pair_id_topic(int fd, long* user_id, char* topic_path) {
-	char aux[SUBS_LINE_SIZE] = {0};
-	if(read(fd, aux, SUBS_LINE_SIZE) <= 0)
-		return false;
-	// Parse aux with sscanf magic
-	sscanf(aux, "%ld %s ", user_id, topic_path);
-	return true;
-}
-
-
-/* Adds a user whose global id is user_id to the subscribers file
- located at file_path. Returns true on success, false otherwise. */
-bool add_user_at_subscriber_file(char* file_path, long user_id, char* topic_path) {
-	// TODO: lock file_path
-	int fd = open(file_path, O_RDWR | O_APPEND | O_CREAT, 0644);
-	if(fd < 0) {
-		printf("%d: Error opening subscribers file %s: %d\n", getpid(), file_path, errno);
-		return false;
-	}
-	
-	if(!write_pair_id_topic(fd, user_id, topic_path)) {
-		printf("%d: Error writing to subscribers file %s: %d\n", getpid(), file_path, errno);
-		return false;
-	}
-	close(fd);
-	return true;
-}
-
-/* Adds a message published by user with global id given to the topic
- located at topic_path. Returns true on success, false otherwise. */
-bool publish_at_topic_file(char* topic_path, long user_id, char* message) {
-	// TODO: lock topic_path
-	int fd = open(topic_path, O_RDWR | O_APPEND | O_CREAT, 0644);
-	if(fd < 0) {
-		printf("%d: Error opening topics file %s: %d\n", getpid(), topic_path, errno);
-		return false;
-	}
-	char aux[PAYLOAD_SIZE + ID_MAX_LENGTH] = {0};
-	sprintf(aux, "%ld %s\n", user_id, message);
-	if(write(fd, aux, strlen(aux)) < 0) {
-		printf("%d: Error writing at topics file %s: %d\n", getpid(), topic_path, errno);
-		return false;
-	}
-	close(fd);
-	return true;
-}
-
-/* Delivers aka forwards the message m to every subscriber of the topic
- with file located in topic_path. Returns false on any error. */
-bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path){
-	char subs_file[PATH_MAX] = {0};
-	// Copy m into a forwarded message
-	mom_message_t forwarded = {m->sender_id, OC_DELIVERED," ", " ", m->mtype};
-	strcpy(forwarded.topic, m->topic);
-	strcpy(forwarded.payload, m->payload);
-	// Retrieve subscribers file and open it
-	topic_to_subscribers(topic_path, subs_file);
-	// TODO: lock subs_file
-	int fd = open(subs_file, O_RDONLY | O_CREAT, 0644);
-	if(fd < 0) {
-		printf("%d: Error opening subscribers file %s: %d\n", getpid(), topic_path, errno);
-		return false;
-	}
-	// Iterate through file, finding users subscribed to topic_path
-	long id; char t[TOPIC_LENGTH];
-	while(read_pair_id_topic(fd, &id, t)) {
-		bool have_to_forward = (strcmp(t, topic_path) == 0);
-		have_to_forward &= (id != m->sender_id); // To not send messages to the sender
-		if(have_to_forward) {
-			// TODO: Really forward message
-			printf("I have to forward message to %ld (payload: %s)\n", id, forwarded.payload);
-		}
-	}
-	
-	close(fd);
-	return true;
-}
-
-/* Checks if user has ever registered before. Returns true if the
- user's really registered, false if not. */
-bool user_is_registered(mom_message_t* m, long* global_id, bool print_warning) { 
-	if(m->sender_id < (*global_id))
-		return true;
-	if(print_warning)
-		printf("%d: Warning! Some not registered user was trying to make a query!\n", getpid());
-	return false;
-}
 
 // ---------------- Opcode treatment functions ----------------
 
@@ -231,11 +41,17 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
-	// TODO: Check if user was subscribed to topic
-	// Write subscription at inverted index table
-	// TODO: lock inv_index
 	char topic_path[PATH_MAX] = {0};
 	sprintf(topic_path, "%s%s%s", TOPICS_DIR, m->topic, TOPIC_EXT);
+	// Check user werent already subscribed to topic
+	if(find_pair_id_topic(inv_index, m->sender_id, topic_path) > 0){
+		printf("%d: Rejecting subscribing because %ld is already subscribed to %s\n", 
+				getpid(), m->sender_id, topic_path);
+		m->opcode = OC_ACK_FAILURE;
+		return;
+	}
+	// Write subscription at inverted index table
+	// TODO: lock inv_index
 	if(!write_pair_id_topic(inv_index, m->sender_id, topic_path)) {
 		printf("%d: Error writing at invert index: %d\n", getpid(), errno);
 		m->opcode = OC_ACK_FAILURE;
@@ -245,7 +61,9 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 	// Note the functions below silently do nothing if any exist.
 	bool b = create_subscribers_file(topic_path);
 	if((!b) || (!create_file(topic_path))){
-		// TODO: Remove pair user topic from inverted index
+		// Remove pair user topic from inverted index
+		lseek(inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
+		remove_pair_id_topic(inv_index);
 		m->opcode = OC_ACK_FAILURE;
 		return;		
 	}
@@ -253,12 +71,45 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 	char subs_path[PATH_MAX] = {0};
 	topic_to_subscribers(topic_path, subs_path);
 	if(!add_user_at_subscriber_file(subs_path, m->sender_id, topic_path)) {
-		// TODO: Remove pair user topic from inverted index
+		// Remove pair user topic from inverted index
+		lseek(inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
+		remove_pair_id_topic(inv_index);
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
 	// If here, subscription was a success
 	m->opcode = OC_ACK_SUCCESS;
+}
+
+/* Delivers aka forwards the message m to every subscriber of the topic
+ with file located in topic_path. Returns false on any error. */
+bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path){
+	char subs_file[PATH_MAX] = {0};
+	// Copy m into a forwarded message
+	mom_message_t forwarded = {m->sender_id, OC_DELIVERED," ", " ", m->mtype};
+	strcpy(forwarded.topic, m->topic);
+	strcpy(forwarded.payload, m->payload);
+	// Retrieve subscribers file and open it
+	topic_to_subscribers(topic_path, subs_file);
+	// TODO: lock subs_file
+	int fd = open(subs_file, O_RDONLY | O_CREAT, 0644);
+	if(fd < 0) {
+		printf("%d: Error opening subscribers file %s: %d\n", getpid(), topic_path, errno);
+		return false;
+	}
+	// Iterate through file, finding users subscribed to topic_path
+	long id; char t[TOPIC_LENGTH];
+	while(read_pair_id_topic(fd, &id, t)) {
+		bool have_to_forward = (strcmp(t, topic_path) == 0);
+		have_to_forward &= (id != m->sender_id); // Dont send messages to the sender
+		if(have_to_forward) {
+			// TODO: Really forward message
+			printf("I have to forward message to %ld (payload: %s)\n", id, forwarded.payload);
+		}
+	}
+	
+	close(fd);
+	return true;
 }
 
 /* Pubblish the message payload into the proper topic. Creates
@@ -285,7 +136,73 @@ void publish_message(mom_message_t* m, long* global_id) {
 		return;		
 	}
 	// Deliver m to every user subscribed to the topic
-	deliver_message_to_subscribers(m, topic_path);
+	if(!deliver_message_to_subscribers(m, topic_path)){
+		m->opcode = OC_ACK_FAILURE;
+		return;		
+	}
+	// If here, all went well
+	m->opcode = OC_ACK_SUCCESS;
+}
+
+/* Erases a user id from the system. In other words, this function
+ loops over the inverted index table and removes the user id from
+ every topic related to them. Sets the opcode to the prover value. */
+void unregister_user(mom_message_t* m, int inv_index, long* global_id) {
+	if(!user_is_registered(m, global_id, true)){
+		m->opcode = OC_ACK_FAILURE;
+		return;
+	}
+	// Seek at the beginning of inv_table
+	if(lseek(inv_index, 0, SEEK_SET) < 0) {
+		printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);
+		m->opcode = OC_ACK_FAILURE;
+		return;
+	}	
+	// Scan inverted index table
+	long id; char t[TOPIC_LENGTH];
+	while(read_pair_id_topic(inv_index, &id, t)) {
+		if(id == m->sender_id) {
+			// If here, user is subscribed at topic t
+			// Hence, delete them from there
+			char subs_file[PATH_MAX] = {0};
+			topic_to_subscribers(t, subs_file);
+			int fd = open(subs_file, O_RDWR | O_CREAT, 0644);
+			if(fd < 0) {
+				printf("%d: Error opening subscribers file %s: %d\n", getpid(), subs_file, errno);
+				continue;
+			}
+			// First find offset at user position
+			off_t p = find_pair_id_topic(fd, id, t);
+			if(p < 0) { // Should not happen if file system is not corrupted
+				printf("%d: Error finding %ld with topic %s in file %s: %d\n", getpid(), id, t, subs_file, errno);
+				close(fd);
+				continue;			
+			}
+			
+			if(lseek(inv_index, -SUBS_LINE_SIZE, SEEK_CUR) < 0) {
+				printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);
+				close(fd);
+				continue;
+			}
+			if(lseek(fd, p, SEEK_SET) < 0) {
+				printf("%d: Error seeking in subscribers file %s: %d\n", getpid(), subs_file, errno);
+				close(fd);
+				continue;
+			}
+			
+			// Delete from subs_file and inv_index
+			if((!remove_pair_id_topic(fd)) || (!remove_pair_id_topic(inv_index))) {
+				printf("%d: Error removing user %ld with topic %s: %d\n", getpid(), id, t, errno);
+				close(fd);
+				continue;
+			}
+			
+			close(fd);
+		}
+	}
+	
+	// If here, no more deleting needed
+	m->opcode = OC_ACK_SUCCESS;
 }
 
 void test_stuff(int inv_index, long* global_id);
@@ -310,6 +227,7 @@ int main(int argc, char* argv[]) {
 	// TODO: Remove test and add loop for reading/writing to msqs
 	
 	test_stuff(inv_index, &global_id);
+	
 		
 	close(inv_index);
 	return 0;
@@ -371,5 +289,8 @@ void test_stuff(int inv_index, long* global_id){
 	publish_message(&m3, global_id);
 	sprintf(m2.topic, "SensorB/Measures/Temperature");
 	publish_message(&m2, global_id);
+	// Remove users 2 and 5 :o
+	unregister_user(&m2, inv_index, global_id);
+	unregister_user(&m5, inv_index, global_id);
 	
 }

@@ -97,6 +97,7 @@ bool mom_receive(mom_t* mom, void* msg){
 
 
 void mom_destroy(mom_t* mom){
+	// TODO: Send destroy message ?
 	if(!mom)	return;
 	free(mom);
 	// Must not destroy mom->msqids since they're mom_daemon queues

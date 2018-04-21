@@ -34,7 +34,7 @@ int main(int argc, char* argv[]){
 		mom_message_t m = {0};
 		// Receive from socket
 		SOCKET_R(s, mom_message_t, m);
-		printf("Received a message from broker!\n");
+		printf("Responser received a message from broker!\n");
 		print_message(m);
 		m.mtype = m.local_id;
 		msq_send(msqid, &m, sizeof(mom_message_t));

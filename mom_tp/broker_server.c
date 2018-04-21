@@ -42,12 +42,47 @@ void create_temporal(char* file_name){
 		}
 }
 
+bool launch_dbms(ap_t* ap) {
+	pid_t pid = fork();
+	if(pid < 0) {
+		printf("%d: Error launching DBMS: %d\n", getpid(), errno);
+		return false;
+	}
+	if(pid == 0) {
+		// If here, this is the DBMS
+		ap_exec(ap);
+	}
+	return true;
+}
+
+
 bool allocate_resources(ap_t** ap_handler, socket_t** s) {
 	*ap_handler = ap_create("./broker_handler");
 	if(!*ap_handler){
 		printf("%d: Error creating handler parser:%d\n", getpid(), errno);
 		return false;
 	}
+	
+	ap_t* ap_dbms = ap_create("./dbms");
+	if(!*ap_handler){
+		printf("%d: Error creating dbms parser:%d\n", getpid(), errno);
+		return false;
+	}
+	
+	// Create queues for handlers and senders
+	create_temporal(QUEUE_HANDLER);
+	create_temporal(QUEUE_SENDER);
+	int msqid_handler = msq_create(QUEUE_HANDLER);
+	int msqid_sender = msq_create(QUEUE_SENDER);
+	
+	ap_set_int(ap_dbms, QUEUE_HANDLER, msqid_handler);
+	ap_set_int(ap_dbms, QUEUE_SENDER, msqid_sender);
+	ap_set_int(*ap_handler, QUEUE_HANDLER, msqid_handler);
+	ap_set_int(*ap_handler, QUEUE_SENDER, msqid_sender);
+	
+	// Launch DBMS process
+	launch_dbms(ap_dbms);
+	ap_destroy(ap_dbms);
 	
 	// Create broker side socket
 	*s = socket_create(SOCK_PASSIVE);
@@ -58,15 +93,6 @@ bool allocate_resources(ap_t** ap_handler, socket_t** s) {
 	
 	socket_bind(*s, SERVER_IP, SERVER_PORT);
 	socket_listen(*s, 0);
-	
-	// Create queues for handlers and senders
-	create_temporal(QUEUE_HANDLER);
-	create_temporal(QUEUE_SENDER);
-	int msqid_handler = msq_create(QUEUE_HANDLER);
-	int msqid_sender = msq_create(QUEUE_SENDER);
-	
-	ap_set_int(*ap_handler, QUEUE_HANDLER, msqid_handler);
-	ap_set_int(*ap_handler, QUEUE_SENDER, msqid_sender);
 	
 	return true;
 }

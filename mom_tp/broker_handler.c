@@ -18,7 +18,6 @@
 
 
 pid_t launch_sender(ap_t* ap_sender) {
-	
 	pid_t pid = fork();
 	if(pid < 0) {
 		printf("%d: Error launching sender: %d\n", getpid(), errno);
@@ -75,15 +74,11 @@ int main(int argc, char* argv[]) {
 	while(1) {
 		mom_message_t m = {0};
 		SOCKET_R(s, mom_message_t, m);
-		printf("%d: Received a message from a machine!\n", getpid());
+		printf("%d: A handler has received a message from a machine!\n", getpid());
 		print_message(m);
 		m.mtype = s_pid;
-		// TODO: Remove later
-		m.opcode = OC_ACK_SUCCESS; 
-		m.global_id = getpid();
-		
+		// Forward message to DBMS
 		msq_send(msqid_h, &m, sizeof(mom_message_t));
-	//	SOCKET_S(s, mom_message_t, m);	
 	}
 	
 	socket_destroy(s);

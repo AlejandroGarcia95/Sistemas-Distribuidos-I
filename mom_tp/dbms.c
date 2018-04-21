@@ -18,33 +18,55 @@
 
 /* Reality is merely an illusion, albeit a very persistent one.*/
 
+// ---------- General info struct for the whole DBMS ----------
+
+typedef  struct dbms_data_ {
+	long global_id;
+	int msqid_h;
+	int msqid_s;
+
+	int inv_index;
+	
+} dbms_data_t;
+
+
 
 // ---------------- Opcode treatment functions ----------------
+
+/* Checks if user has ever registered before. Returns true if the
+ user's really registered, false if not. */
+bool user_is_registered(mom_message_t* m, long global_id, bool print_warning) { 
+	if(m->global_id < global_id)
+		return true;
+	if(print_warning)
+		printf("%d: Warning! Some not registered user was trying to make a query!\n", getpid());
+	return false;
+}
 
 /* Registers a new user, setting the mom_message global_id field
  to the proper global_id of the sender. Sets the message opcode 
  to the proper value depending on success. */
-void register_user(mom_message_t* m, long* global_id) {
-	if(user_is_registered(m, global_id, false)){
+void register_user(mom_message_t* m, dbms_data_t* dd) {
+	if(user_is_registered(m, dd->global_id, false)){
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
-	m->global_id = *global_id;
+	m->global_id = dd->global_id;
 	m->opcode = OC_ACK_SUCCESS;
-	(*global_id)++;
+	dd->global_id++;
 }
 
 /* Subscribes user to a new topic, creating it if it didn't exist.
  Sets the message opcode to the proper value depending on success. */
-void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
-	if(!user_is_registered(m, global_id, true)){
+void subscribe_user(mom_message_t* m, dbms_data_t* dd) {
+	if(!user_is_registered(m, dd->global_id, true)){
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
 	char topic_path[PATH_MAX] = {0};
 	sprintf(topic_path, "%s%s%s", TOPICS_DIR, m->topic, TOPIC_EXT);
 	// Check user werent already subscribed to topic
-	if(find_pair_id_topic(inv_index, m->global_id, topic_path) > 0){
+	if(find_pair_id_topic(dd->inv_index, m->global_id, topic_path) > 0){
 		printf("%d: Rejecting subscribing because %ld is already subscribed to %s\n", 
 				getpid(), m->global_id, topic_path);
 		m->opcode = OC_ACK_FAILURE;
@@ -52,7 +74,7 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 	}
 	// Write subscription at inverted index table
 	// TODO: lock inv_index
-	if(!write_pair_id_topic(inv_index, m->global_id, topic_path)) {
+	if(!write_pair_id_topic(dd->inv_index, m->global_id, topic_path)) {
 		printf("%d: Error writing at invert index: %d\n", getpid(), errno);
 		m->opcode = OC_ACK_FAILURE;
 		return;
@@ -62,8 +84,8 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 	bool b = create_subscribers_file(topic_path);
 	if((!b) || (!create_file(topic_path))){
 		// Remove pair user topic from inverted index
-		lseek(inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
-		remove_pair_id_topic(inv_index);
+		lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
+		remove_pair_id_topic(dd->inv_index);
 		m->opcode = OC_ACK_FAILURE;
 		return;		
 	}
@@ -72,8 +94,8 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 	topic_to_subscribers(topic_path, subs_path);
 	if(!add_user_at_subscriber_file(subs_path, m->global_id, topic_path)) {
 		// Remove pair user topic from inverted index
-		lseek(inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
-		remove_pair_id_topic(inv_index);
+		lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
+		remove_pair_id_topic(dd->inv_index);
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
@@ -83,7 +105,7 @@ void subscribe_user(mom_message_t* m, int inv_index, long* global_id) {
 
 /* Delivers aka forwards the message m to every subscriber of the topic
  with file located in topic_path. Returns false on any error. */
-bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path){
+bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path, dbms_data_t* dd){
 	char subs_file[PATH_MAX] = {0};
 	// Copy m into a forwarded message
 	mom_message_t forwarded = {m->local_id, m->global_id, OC_DELIVERED," ", " ", m->mtype};
@@ -103,8 +125,10 @@ bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path){
 		bool have_to_forward = (strcmp(t, topic_path) == 0);
 		have_to_forward &= (id != m->global_id); // Dont send messages to the sender
 		if(have_to_forward) {
-			// TODO: Really forward message
-			printf("I have to forward message to %ld (payload: %s)\n", id, forwarded.payload);
+			// Really forward message
+			forwarded.mtype = id;
+			forwarded.local_id = id;
+			msq_send(dd->msqid_s, &forwarded, sizeof(mom_message_t));
 		}
 	}
 	
@@ -116,8 +140,8 @@ bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path){
  the topic if it didn't exist. Sets the message opcode to the
  proper value depending on success. Also, delivers the message
  to every topic subscriber. */
-void publish_message(mom_message_t* m, long* global_id) {
-	if(!user_is_registered(m, global_id, true)){
+void publish_message(mom_message_t* m, dbms_data_t* dd) {
+	if(!user_is_registered(m, dd->global_id, true)){
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
@@ -136,7 +160,7 @@ void publish_message(mom_message_t* m, long* global_id) {
 		return;		
 	}
 	// Deliver m to every user subscribed to the topic
-	if(!deliver_message_to_subscribers(m, topic_path)){
+	if(!deliver_message_to_subscribers(m, topic_path, dd)){
 		m->opcode = OC_ACK_FAILURE;
 		return;		
 	}
@@ -147,20 +171,20 @@ void publish_message(mom_message_t* m, long* global_id) {
 /* Erases a user id from the system. In other words, this function
  loops over the inverted index table and removes the user id from
  every topic related to them. Sets the opcode to the prover value. */
-void unregister_user(mom_message_t* m, int inv_index, long* global_id) {
-	if(!user_is_registered(m, global_id, true)){
+void unregister_user(mom_message_t* m, dbms_data_t* dd) {
+	if(!user_is_registered(m, dd->global_id, true)){
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
 	// Seek at the beginning of inv_table
-	if(lseek(inv_index, 0, SEEK_SET) < 0) {
+	if(lseek(dd->inv_index, 0, SEEK_SET) < 0) {
 		printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}	
 	// Scan inverted index table
 	long id; char t[TOPIC_LENGTH];
-	while(read_pair_id_topic(inv_index, &id, t)) {
+	while(read_pair_id_topic(dd->inv_index, &id, t)) {
 		if(id == m->global_id) {
 			// If here, user is subscribed at topic t
 			// Hence, delete them from there
@@ -179,7 +203,7 @@ void unregister_user(mom_message_t* m, int inv_index, long* global_id) {
 				continue;			
 			}
 			
-			if(lseek(inv_index, -SUBS_LINE_SIZE, SEEK_CUR) < 0) {
+			if(lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR) < 0) {
 				printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);
 				close(fd);
 				continue;
@@ -191,7 +215,7 @@ void unregister_user(mom_message_t* m, int inv_index, long* global_id) {
 			}
 			
 			// Delete from subs_file and inv_index
-			if((!remove_pair_id_topic(fd)) || (!remove_pair_id_topic(inv_index))) {
+			if((!remove_pair_id_topic(fd)) || (!remove_pair_id_topic(dd->inv_index))) {
 				printf("%d: Error removing user %ld with topic %s: %d\n", getpid(), id, t, errno);
 				close(fd);
 				continue;
@@ -205,7 +229,43 @@ void unregister_user(mom_message_t* m, int inv_index, long* global_id) {
 	m->opcode = OC_ACK_SUCCESS;
 }
 
-void test_stuff(int inv_index, long* global_id);
+
+void process_message(mom_message_t* m, dbms_data_t* dd) {
+	// TODO: Fork here and change returns for exits
+	switch(m->opcode) {
+		// User has just created mom
+		case OC_CREATE:
+			register_user(m, dd);
+			return;
+		
+		// User has subscribed
+		case OC_SUBSCRIBE:
+			m->mtype = m->global_id;
+			subscribe_user(m, dd);
+			return;
+			
+		// User has published smth
+		case OC_PUBLISH:
+			m->mtype = m->global_id;
+			publish_message(m, dd);
+			return;
+		
+		// User has destroyed mom
+		case OC_DESTROY:
+			m->mtype = m->global_id;
+			unregister_user(m, dd);
+			return;
+		
+		// Should never happen
+		default:
+			printf("%d: Warning! Received a not valid opcode of%d\n", getpid(), m->opcode);
+			m->opcode = OC_ACK_FAILURE;
+			return;
+	}
+	
+}
+
+void test_stuff(dbms_data_t* dd);
 
 // -------------------------------------------------------------------
 
@@ -218,23 +278,47 @@ void test_stuff(int inv_index, long* global_id);
 // -------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
-	// TODO: Use argv_parser to receive msqids
-	int inv_index = create_inverted_index();
-	if((inv_index < 0) || (!create_directory(TOPICS_DIR)))
+	// Data struct for DBMS
+	dbms_data_t dd = {0};
+	dd.inv_index = create_inverted_index();
+	if((dd.inv_index < 0) || (!create_directory(TOPICS_DIR)))
 		return -1;
-	long global_id = 1;
 	
-	// TODO: Remove test and add loop for reading/writing to msqs
+	// Use argv_parser to retrieve msqids
+	ap_t* ap = ap_create_from_argv(argc, argv);
+	if(!ap) {
+		printf("%d: Error creating argv_parser:%d\n", getpid(), errno);
+		exit(-1);
+	}
 	
-	test_stuff(inv_index, &global_id);
+	ap_get_int(ap, QUEUE_HANDLER, &dd.msqid_h);
+	ap_get_int(ap, QUEUE_SENDER, &dd.msqid_s);
 	
-		
-	close(inv_index);
+	ap_destroy(ap);
+	
+	dd.global_id = 1;
+	
+	printf("Broker DBMS is up (PID: %d) !\n", getpid());
+	
+	// test_stuff(&dd);
+	
+	// DBMS main loop
+	while(1) {
+		mom_message_t m = {0};
+		msq_rcv(dd.msqid_h, &m, sizeof(mom_message_t), 0);
+		printf("%d: DBMS now processing message...\n", getpid());
+		// Message processing
+		process_message(&m, &dd);
+		// Forward response to sender
+		msq_send(dd.msqid_s, &m, sizeof(mom_message_t));
+	}
+	
+	close(dd.inv_index);
 	return 0;
 }
 
 
-void test_stuff(int inv_index, long* global_id){
+void test_stuff(dbms_data_t* dd) {
 	// m = {local_id, global_id, opcode, topic, payload, mtype}
 	mom_message_t m1 = {10, 10, OC_CREATE, "SensorA/Measures/Temperature", "29 Celsius", 22};
 	mom_message_t m2 = {11, 11, OC_CREATE, "SensorA/Measures/Temperature", "23 Celsius", 33};
@@ -243,54 +327,54 @@ void test_stuff(int inv_index, long* global_id){
 	mom_message_t m5 = {14, 14, OC_CREATE, "SensorA/Measures/Temperature", "88%", 66};
 	mom_message_t m6 = {15, 15, OC_CREATE, "SensorA/Measures/Temperature", "31 Celsius", 77};
 	// Create six users
-	register_user(&m1, global_id);
-	register_user(&m2, global_id);
-	register_user(&m3, global_id);
-	register_user(&m4, global_id);
-	register_user(&m5, global_id);
-	register_user(&m6, global_id);
+	register_user(&m1, dd);
+	register_user(&m2, dd);
+	register_user(&m3, dd);
+	register_user(&m4, dd);
+	register_user(&m5, dd);
+	register_user(&m6, dd);
 	// Subscribe all six users to topics:
 	// Every user will subscribe to SensorA/Measures/Temperature
 	// Only users 1, 5, 6 will subscribe to SensorB/Measures/Temperature
 	// Only users 2, 4 will subscribe to SensorB/Measures/Pressure
 	// Only users 2, 3 will subscribe to SensorB/Measures/Humidity
-	subscribe_user(&m1, inv_index, global_id);
-	subscribe_user(&m2, inv_index, global_id);
-	subscribe_user(&m3, inv_index, global_id);
-	subscribe_user(&m4, inv_index, global_id);
-	subscribe_user(&m5, inv_index, global_id);
-	subscribe_user(&m6, inv_index, global_id);
+	subscribe_user(&m1, dd);
+	subscribe_user(&m2, dd);
+	subscribe_user(&m3, dd);
+	subscribe_user(&m4, dd);
+	subscribe_user(&m5, dd);
+	subscribe_user(&m6, dd);
 	sprintf(m1.topic, "SensorB/Measures/Temperature");
 	sprintf(m5.topic, "SensorB/Measures/Temperature");
 	sprintf(m6.topic, "SensorB/Measures/Temperature");
-	subscribe_user(&m1, inv_index, global_id);
-	subscribe_user(&m5, inv_index, global_id);
-	subscribe_user(&m6, inv_index, global_id);
+	subscribe_user(&m1, dd);
+	subscribe_user(&m5, dd);
+	subscribe_user(&m6, dd);
 	sprintf(m2.topic, "SensorB/Measures/Pressure");
 	sprintf(m4.topic, "SensorB/Measures/Pressure");
-	subscribe_user(&m2, inv_index, global_id);
-	subscribe_user(&m4, inv_index, global_id);
+	subscribe_user(&m2, dd);
+	subscribe_user(&m4, dd);
 	sprintf(m2.topic, "SensorB/Measures/Humidity");
 	sprintf(m3.topic, "SensorB/Measures/Humidity");
-	subscribe_user(&m2, inv_index, global_id);
-	subscribe_user(&m3, inv_index, global_id);
+	subscribe_user(&m2, dd);
+	subscribe_user(&m3, dd);
 	// Publish some stuff:
 	// 1 will publish to SensorB/Measures/Temperature => 5, 6 will receive
 	// 5 will publish to SensorB/Measures/Humidity => 2, 3 will receive
 	// 4 will publish to SensorB/Measures/Pressure => 2 will receive
 	// 3 will publish to SensorA/Measures/Temperature => Everyone except 3 will receive
 	// 2 will publish to SensorB/Measures/Temperature => 1, 5, 6 will receive
-	publish_message(&m1, global_id);
+	publish_message(&m1, dd);
 	sprintf(m5.topic, "SensorB/Measures/Humidity");
-	publish_message(&m5, global_id);
+	publish_message(&m5, dd);
 	sprintf(m4.topic, "SensorB/Measures/Pressure");
-	publish_message(&m4, global_id);
+	publish_message(&m4, dd);
 	sprintf(m3.topic, "SensorA/Measures/Temperature");
-	publish_message(&m3, global_id);
+	publish_message(&m3, dd);
 	sprintf(m2.topic, "SensorB/Measures/Temperature");
-	publish_message(&m2, global_id);
+	publish_message(&m2, dd);
 	// Remove users 2 and 5 :o
-	unregister_user(&m2, inv_index, global_id);
-	unregister_user(&m5, inv_index, global_id);
+	unregister_user(&m2, dd);
+	unregister_user(&m5, dd);
 	
 }

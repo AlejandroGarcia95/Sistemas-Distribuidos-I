@@ -54,7 +54,11 @@ mom_t* mom_create(){
 		free(mom);
 		return NULL;
 	}
-	// TODO: Fail if response.opcode == OC_ACK_FAILURE
+	if(response.opcode == OC_ACK_FAILURE) {
+		printf("%d: Error creating mom, could not register on broker\n", getpid());
+		free(mom);
+		return NULL;
+	}
 	mom->global_id = response.global_id;
 	return mom;
 }
@@ -88,7 +92,7 @@ bool mom_subscribe(mom_t* mom, char* topic){
 bool mom_receive(mom_t* mom, void* msg){
 	// Locally receive message from daemon requester
 	mom_message_t response = {0};
-	msq_rcv(mom->msqid_responser, &response, sizeof(mom_message_t), mom->local_id);
+	msq_rcv(mom->msqid_responser, &response, sizeof(mom_message_t), mom->global_id);
 	if(response.opcode != OC_DELIVERED) {
 		printf("%d: MOM CRITICAL ON RECEIVING: Daemon has not delivered message!\n", getpid());
 		return false;
@@ -100,7 +104,14 @@ bool mom_receive(mom_t* mom, void* msg){
 
 
 void mom_destroy(mom_t* mom){
-	// TODO: Send destroy message ?
+	// Send destroy message
+	mom_message_t m = {0}, response = {0};
+	fill_message(&m, mom, OC_DESTROY, NULL, NULL);
+	send_message_to_daemon(mom, m, &response);
+	if((response.opcode != OC_ACK_SUCCESS) && (response.opcode != OC_ACK_FAILURE)) 
+		printf("%d: MOM CRITICAL ON DESTROYING: Daemon answer was not ACK!\n", getpid());
+	
+	// Release shared memory nonetheless
 	if(!mom)	return;
 	free(mom);
 	// Must not destroy mom->msqids since they're mom_daemon queues

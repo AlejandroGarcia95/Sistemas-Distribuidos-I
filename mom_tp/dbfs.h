@@ -227,13 +227,4 @@ bool publish_at_topic_file(char* topic_path, long user_id, char* message) {
 }
 
 
-/* Checks if user has ever registered before. Returns true if the
- user's really registered, false if not. */
-bool user_is_registered(mom_message_t* m, long* global_id, bool print_warning) { 
-	if(m->global_id < (*global_id))
-		return true;
-	if(print_warning)
-		printf("%d: Warning! Some not registered user was trying to make a query!\n", getpid());
-	return false;
-}
 

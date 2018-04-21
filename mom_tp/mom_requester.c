@@ -34,7 +34,7 @@ int main(int argc, char* argv[]){
 	while(1) {
 		mom_message_t m = {0};
 		msq_rcv(msqid, &m, sizeof(mom_message_t), 0);
-		printf("Received a message from user!\n");
+		printf("Requester received a message from user!\n");
 		print_message(m);
 		// Forward via socket
 		SOCKET_S(s, mom_message_t, m);

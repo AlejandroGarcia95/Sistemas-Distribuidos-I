@@ -18,6 +18,9 @@
 /* Creates a temporal file with a given file_name. */
 void create_temporal(char* file_name){
 	if(mknod(file_name, S_IFREG|0666, 0) < 0) {
+			// In case they already exist, I ain't care
+			if(errno == EEXIST)	return;
+
 			printf("%d: Error creating temporal file %s: %d\n", getpid(), file_name, errno);
 			exit(-1);
 		}
@@ -91,6 +94,14 @@ void release_resources(ap_t* ap_requester, ap_t* ap_responser) {
 	unlink(QUEUE_RESPONSER);
 }
 
+void ignore_sigint() {
+	sigset_t sigset;
+	
+	sigemptyset(&sigset);
+	sigaddset(&sigset, SIGINT);
+	sigprocmask(SIG_SETMASK, &sigset, NULL);
+}
+
 int main(int argc, char* argv[]) {
 	// Allocate resources
 	ap_t* ap_requester = NULL;
@@ -101,7 +112,7 @@ int main(int argc, char* argv[]) {
 		return -1;
 	
 	// Launch all mom processes
-	printf("Launching mom daemon...\n");
+	printf("%d: Launching mom daemon...\n", getpid());
 	
 	if(!launch_process(ap_requester, "mom requester"))
 		return -1;
@@ -110,14 +121,13 @@ int main(int argc, char* argv[]) {
 		return -1;
 	
 	socket_destroy(s);
-	sleep(1); // TODO: Either change for a more beautiful synch mechanism
-				// or remove and leave prints in any order
-	printf("Mom daemon is fully up!\n");
 	
+	ignore_sigint();
 	// Release resources when finished
 	wait(NULL);
 	wait(NULL);
 	
 	release_resources(ap_requester, ap_responser);
+	printf("\nMom daemon fully closed.\n");
 	return 0;
 }

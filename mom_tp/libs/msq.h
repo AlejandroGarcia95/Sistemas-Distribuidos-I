@@ -62,7 +62,9 @@ void msq_send(int msqid, const void *msg, size_t msgsz){
 
 void msq_rcv(int msqid, void *msg, size_t msgsz, long type){
     if(msgrcv(msqid, msg, msgsz - sizeof(long), type, 0) == -1){
-         printf("%d: Error receiving message  on queue %d: %d\n", getpid(), msqid, errno);
+        if(errno == EINTR)	// If signal arrived...
+			return;
+		printf("%d: Error receiving message  on queue %d: %d\n", getpid(), msqid, errno);
         exit(-1);
     }
 }

@@ -20,13 +20,14 @@
 #define TOPIC_LENGTH 100
 
 typedef enum opcode_ {
-	OC_CREATE, 
-	OC_DESTROY, 
-	OC_PUBLISH, 
-	OC_SUBSCRIBE,
-	OC_ACK_SUCCESS, 
-	OC_ACK_FAILURE,
-	OC_DELIVERED // Used by broker when sending message to all subscribers on topic
+	OC_CREATE = 1, 
+	OC_DESTROY = 2, 
+	OC_PUBLISH = 3, 
+	OC_SUBSCRIBE = 4,
+	OC_ACK_SUCCESS = 5, 
+	OC_ACK_FAILURE = 6,
+	OC_DELIVERED = 7, // Used by broker when sending message to all subscribers on topic
+	OC_SEPPUKU = 8 // Used by mom_daemon to tell handler to gracefully die
 	} opcode_t;
 	
 
@@ -47,8 +48,8 @@ typedef  struct mom_message_ {
 
 // Debug purposes only
 void print_message(mom_message_t m){
-	char* oc_str[] = 	{"CREATE", "DESTROY", "PUBLISH", "SUBSCRIBE", 
-						"ACK_SUCCESS", "ACK_FAILURE", "DELIVERED"};
+	char* oc_str[] = 	{"", "CREATE", "DESTROY", "PUBLISH", "SUBSCRIBE", 
+						"ACK_SUCCESS", "ACK_FAILURE", "DELIVERED", "SEPPUKU"};
 	printf("---------------------------------------------------\n");
 	printf("LOCAL ID: %ld\n", m.local_id);
 	printf("GLOBAL ID: %ld\n", m.global_id);

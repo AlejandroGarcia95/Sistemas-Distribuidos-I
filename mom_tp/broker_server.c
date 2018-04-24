@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <signal.h>
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/types.h>
@@ -21,7 +22,6 @@
 bool keep_looping = true;
 
 void handler(int signum) {
-  printf("Closing broker server...\n");
   keep_looping = false;
 }
 
@@ -114,14 +114,16 @@ void release_resources(ap_t* ap_handler, socket_t* s) {
 	unlink(QUEUE_SENDER);
 }
 
-void launch_handler(ap_t* ap_handler, socket_t* s){
+bool launch_handler(ap_t* ap_handler, socket_t* s){
 	socket_t* s2 = socket_accept(s);
+	
+	if(!s2)	return false;
 	
 	pid_t pid = fork();
 	if(pid < 0) {
 		printf("%d: Error launching handler: %d\n", getpid(), errno);
 		socket_destroy(s2);
-		return;
+		return false;
 	}
 	if(pid == 0) {
 		// If here, this is the handler
@@ -132,6 +134,7 @@ void launch_handler(ap_t* ap_handler, socket_t* s){
 	}
 	
 	socket_destroy(s2);
+	return true;
 }
 
 int main(int argc, char* argv[]){
@@ -143,16 +146,23 @@ int main(int argc, char* argv[]){
 	if(!allocate_resources(&ap_handler, &s))
 		return -1;
 	
+	int children_amount = 1;
 	keep_looping = true;
 	printf("Broker server is up!\n");
 	
 	
 	
 	while(keep_looping){
-		launch_handler(ap_handler, s);
+		if(launch_handler(ap_handler, s))
+			children_amount += 2; // A pair handler-sender, right?
 	}
 	
-	release_resources(ap_handler, s);
+	printf("\nClosing broker server...\n");
+	// Wait all children to finish
+	for(int i = 0; i < children_amount; i++)
+		wait(NULL);
 	
+	release_resources(ap_handler, s);
+	printf("\nBroker server closed.\n");
 	return 0;
 }

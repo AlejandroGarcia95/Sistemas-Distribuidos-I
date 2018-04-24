@@ -11,7 +11,25 @@
 #include "libs/socket.h"
 #include "libs/argv_parser.h"
 
+
+bool keep_looping = true;
+
+void handler(int signum) {
+  keep_looping = false;
+}
+
+void set_handler() {
+	struct sigaction sa;
+
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = handler;
+	sigaction(SIGINT, &sa, NULL);
+}
+
+
 int main(int argc, char* argv[]){
+	set_handler();
 	ap_t* ap = ap_create_from_argv(argc, argv);
 	if(!ap) {
 		printf("%d: Error creating argv_parser: %d\n", getpid(), errno);
@@ -28,18 +46,26 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
-	printf("Daemon requester is up!\n");
+	printf("Daemon requester is up! (PID: %d)\n", getpid());
 
 	// Requester main loop
-	while(1) {
+	while(keep_looping) {
 		mom_message_t m = {0};
 		msq_rcv(msqid, &m, sizeof(mom_message_t), 0);
+		if(!keep_looping) break;
 		printf("Requester received a message from user!\n");
 		print_message(m);
 		// Forward via socket
 		SOCKET_S(s, mom_message_t, m);
 	}
 	
+	// If here, must close mom_requester. Make the broker
+	// handler and sender die as well, since they ain't needed
+	mom_message_t m = {0};
+	m.opcode = OC_SEPPUKU;
+	SOCKET_S(s, mom_message_t, m);
+	
+	printf("\nClosing mom_requester...\n");
 	socket_destroy(s);
 	ap_destroy(ap);
 	exit(0);

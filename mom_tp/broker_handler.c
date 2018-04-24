@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 #include <sys/wait.h>
 
 #include "mom_general.h"
@@ -15,6 +16,7 @@
 /* Handle every situation like a dog: if you can't eat it or 
  play with it, just pee on it and walk away. */
 
+#define ATTEMPTS_RECEIVING 10
 
 
 pid_t launch_sender(ap_t* ap_sender) {
@@ -45,6 +47,21 @@ ap_t* create_sender_ap(int socket_fd, int msqid_h, int msqid_s) {
 	return ap;
 }
 
+bool keep_looping = true;
+
+
+void handler(int signum) {
+  keep_looping = false;
+}
+
+void set_handler() {
+	struct sigaction sa;
+
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = handler;
+	sigaction(SIGINT, &sa, NULL);
+}
 
 int main(int argc, char* argv[]) {
 	ap_t* ap = ap_create_from_argv(argc, argv);
@@ -68,12 +85,26 @@ int main(int argc, char* argv[]) {
 		exit(-1);
 	}
 	
+	set_handler();
 	printf("A broker handler is up (PID: %d) !\n", getpid());
-	
+	int att_rcv = 0;
 	// Handler main loop
-	while(1) {
+	while(keep_looping) {
 		mom_message_t m = {0};
 		SOCKET_R(s, mom_message_t, m);
+		if(!keep_looping)	break;
+		if((m.opcode == OC_SEPPUKU) || (att_rcv == ATTEMPTS_RECEIVING)) {
+			// If here, the other machine has killed daemon. This
+			// handler and sender services are no longer needed
+			kill(s_pid, SIGINT);
+			break;
+		}
+		if(((int) m.opcode) == 0) { // No message received
+			printf("WARNING: No message received from machine\n");
+			att_rcv++;
+			continue;
+		}
+		att_rcv = 0;
 		printf("%d: A handler has received a message from a machine!\n", getpid());
 		print_message(m);
 		m.mtype = s_pid;
@@ -81,6 +112,7 @@ int main(int argc, char* argv[]) {
 		msq_send(msqid_h, &m, sizeof(mom_message_t));
 	}
 	
+	printf("\nClosing a broker handler (PID: %d)...\n", getpid());
 	socket_destroy(s);
 	ap_destroy(ap);
 	exit(0);

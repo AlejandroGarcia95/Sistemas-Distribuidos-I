@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 #include <errno.h>
 #include <limits.h>
 #include <sys/stat.h>
@@ -265,7 +266,20 @@ void process_message(mom_message_t* m, dbms_data_t* dd) {
 	
 }
 
-void test_stuff(dbms_data_t* dd);
+bool keep_looping = true;
+
+void handler(int signum) {
+	keep_looping = false;
+}
+
+void set_handler() {
+	struct sigaction sa;
+
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	sa.sa_handler = handler;
+	sigaction(SIGINT, &sa, NULL);
+}
 
 // -------------------------------------------------------------------
 
@@ -298,14 +312,14 @@ int main(int argc, char* argv[]) {
 	
 	dd.global_id = 1;
 	
+	set_handler();
 	printf("Broker DBMS is up (PID: %d) !\n", getpid());
-	
-	// test_stuff(&dd);
-	
+		
 	// DBMS main loop
-	while(1) {
+	while(keep_looping) {
 		mom_message_t m = {0};
 		msq_rcv(dd.msqid_h, &m, sizeof(mom_message_t), 0);
+		if(!keep_looping)	break;
 		printf("%d: DBMS now processing message...\n", getpid());
 		// Message processing
 		process_message(&m, &dd);
@@ -313,68 +327,8 @@ int main(int argc, char* argv[]) {
 		msq_send(dd.msqid_s, &m, sizeof(mom_message_t));
 	}
 	
+	printf("\nClosing DBMS...\n");
 	close(dd.inv_index);
 	return 0;
 }
 
-
-void test_stuff(dbms_data_t* dd) {
-	// m = {local_id, global_id, opcode, topic, payload, mtype}
-	mom_message_t m1 = {10, 10, OC_CREATE, "SensorA/Measures/Temperature", "29 Celsius", 22};
-	mom_message_t m2 = {11, 11, OC_CREATE, "SensorA/Measures/Temperature", "23 Celsius", 33};
-	mom_message_t m3 = {12, 12, OC_CREATE, "SensorA/Measures/Temperature", "-10 Celsius", 44};
-	mom_message_t m4 = {13, 13, OC_CREATE, "SensorA/Measures/Temperature", "1 atm", 55};
-	mom_message_t m5 = {14, 14, OC_CREATE, "SensorA/Measures/Temperature", "88%", 66};
-	mom_message_t m6 = {15, 15, OC_CREATE, "SensorA/Measures/Temperature", "31 Celsius", 77};
-	// Create six users
-	register_user(&m1, dd);
-	register_user(&m2, dd);
-	register_user(&m3, dd);
-	register_user(&m4, dd);
-	register_user(&m5, dd);
-	register_user(&m6, dd);
-	// Subscribe all six users to topics:
-	// Every user will subscribe to SensorA/Measures/Temperature
-	// Only users 1, 5, 6 will subscribe to SensorB/Measures/Temperature
-	// Only users 2, 4 will subscribe to SensorB/Measures/Pressure
-	// Only users 2, 3 will subscribe to SensorB/Measures/Humidity
-	subscribe_user(&m1, dd);
-	subscribe_user(&m2, dd);
-	subscribe_user(&m3, dd);
-	subscribe_user(&m4, dd);
-	subscribe_user(&m5, dd);
-	subscribe_user(&m6, dd);
-	sprintf(m1.topic, "SensorB/Measures/Temperature");
-	sprintf(m5.topic, "SensorB/Measures/Temperature");
-	sprintf(m6.topic, "SensorB/Measures/Temperature");
-	subscribe_user(&m1, dd);
-	subscribe_user(&m5, dd);
-	subscribe_user(&m6, dd);
-	sprintf(m2.topic, "SensorB/Measures/Pressure");
-	sprintf(m4.topic, "SensorB/Measures/Pressure");
-	subscribe_user(&m2, dd);
-	subscribe_user(&m4, dd);
-	sprintf(m2.topic, "SensorB/Measures/Humidity");
-	sprintf(m3.topic, "SensorB/Measures/Humidity");
-	subscribe_user(&m2, dd);
-	subscribe_user(&m3, dd);
-	// Publish some stuff:
-	// 1 will publish to SensorB/Measures/Temperature => 5, 6 will receive
-	// 5 will publish to SensorB/Measures/Humidity => 2, 3 will receive
-	// 4 will publish to SensorB/Measures/Pressure => 2 will receive
-	// 3 will publish to SensorA/Measures/Temperature => Everyone except 3 will receive
-	// 2 will publish to SensorB/Measures/Temperature => 1, 5, 6 will receive
-	publish_message(&m1, dd);
-	sprintf(m5.topic, "SensorB/Measures/Humidity");
-	publish_message(&m5, dd);
-	sprintf(m4.topic, "SensorB/Measures/Pressure");
-	publish_message(&m4, dd);
-	sprintf(m3.topic, "SensorA/Measures/Temperature");
-	publish_message(&m3, dd);
-	sprintf(m2.topic, "SensorB/Measures/Temperature");
-	publish_message(&m2, dd);
-	// Remove users 2 and 5 :o
-	unregister_user(&m2, dd);
-	unregister_user(&m5, dd);
-	
-}

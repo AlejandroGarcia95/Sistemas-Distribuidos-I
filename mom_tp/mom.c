@@ -30,6 +30,24 @@ void send_message_to_daemon(mom_t* mom, mom_message_t m, mom_message_t* response
 	msq_rcv(mom->msqid_responser, response, sizeof(mom_message_t), mom->local_id);
 }
 
+bool topic_is_valid(char* topic) {
+	if(strlen(topic) == 0) {
+		printf("%d: Error, topic received has zero length!\n", getpid());
+		return false;
+	}
+	if(strlen(topic) > TOPIC_LENGTH) {
+		printf("%d: Error, topic cannot exceed lenght %d!\n", getpid(), TOPIC_LENGTH);
+		return false;
+	}
+	for(int i = 0; i < strlen(topic); i++) {
+		if((topic[i] == ' ') || (topic[i] == '.') || (topic[i] == ':') || (topic[i] == '!')) {
+			printf("%d: Error, topic cannot have any space, . , : or !\n", getpid());
+			return false;
+		}
+	}
+	return true;
+}
+
 
 // --------------- LIBRARY PUBLIC FUNCTIONS ------------------------
 
@@ -64,6 +82,11 @@ mom_t* mom_create(){
 }
 
 bool mom_publish(mom_t* mom, char* topic, const void *msg){
+	if((!mom) || (!topic) || (!msg)) {
+		printf("%d: Invalid argument in mom_publish: NULL received\n", getpid());
+		return false;
+	}
+	if(!topic_is_valid(topic))	return false;
 	mom_message_t m = {0}, response = {0};
 	// Write and read publish message
 	fill_message(&m, mom, OC_PUBLISH, topic, (char*) msg);
@@ -77,6 +100,11 @@ bool mom_publish(mom_t* mom, char* topic, const void *msg){
 }
 
 bool mom_subscribe(mom_t* mom, char* topic){
+	if((!mom) || (!topic)) {
+		printf("%d: Invalid argument in mom_publish: NULL received\n", getpid());
+		return false;
+	}
+	if(!topic_is_valid(topic))	return false;
 	mom_message_t m = {0}, response = {0};
 	// Write and read subscribe message
 	fill_message(&m, mom, OC_SUBSCRIBE, topic, NULL);
@@ -90,6 +118,10 @@ bool mom_subscribe(mom_t* mom, char* topic){
 }
 
 bool mom_receive(mom_t* mom, void* msg){
+	if((!mom) || (!msg)) {
+		printf("%d: Invalid argument in mom_publish: NULL received\n", getpid());
+		return false;
+	}
 	// Locally receive message from daemon requester
 	mom_message_t response = {0};
 	msq_rcv(mom->msqid_responser, &response, sizeof(mom_message_t), mom->global_id);
@@ -104,6 +136,7 @@ bool mom_receive(mom_t* mom, void* msg){
 
 
 void mom_destroy(mom_t* mom){
+	if(!mom)	return;
 	// Send destroy message
 	mom_message_t m = {0}, response = {0};
 	fill_message(&m, mom, OC_DESTROY, NULL, NULL);
@@ -112,7 +145,6 @@ void mom_destroy(mom_t* mom){
 		printf("%d: MOM CRITICAL ON DESTROYING: Daemon answer was not ACK!\n", getpid());
 	
 	// Release shared memory nonetheless
-	if(!mom)	return;
 	free(mom);
 	// Must not destroy mom->msqids since they're mom_daemon queues
 }

@@ -64,6 +64,7 @@ void subscribe_user(mom_message_t* m, dbms_data_t* dd) {
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
+	lock_acquire(dd->inv_index, true);
 	char topic_path[PATH_MAX] = {0};
 	sprintf(topic_path, "%s%s%s", TOPICS_DIR, m->topic, TOPIC_EXT);
 	// Check user werent already subscribed to topic
@@ -71,13 +72,14 @@ void subscribe_user(mom_message_t* m, dbms_data_t* dd) {
 		printf("%d: Rejecting subscribing because %ld is already subscribed to %s\n", 
 				getpid(), m->global_id, topic_path);
 		m->opcode = OC_ACK_FAILURE;
+		lock_release(dd->inv_index);
 		return;
 	}
 	// Write subscription at inverted index table
-	// TODO: lock inv_index
 	if(!write_pair_id_topic(dd->inv_index, m->global_id, topic_path)) {
 		printf("%d: Error writing at invert index: %d\n", getpid(), errno);
 		m->opcode = OC_ACK_FAILURE;
+		lock_release(dd->inv_index);
 		return;
 	}
 	// If the topic and subscriber files don't exist, create them. 
@@ -88,8 +90,10 @@ void subscribe_user(mom_message_t* m, dbms_data_t* dd) {
 		lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
 		remove_pair_id_topic(dd->inv_index);
 		m->opcode = OC_ACK_FAILURE;
+		lock_release(dd->inv_index);
 		return;		
 	}
+	
 	// Write user's global id at the topic's subscribers file
 	char subs_path[PATH_MAX] = {0};
 	topic_to_subscribers(topic_path, subs_path);
@@ -98,9 +102,11 @@ void subscribe_user(mom_message_t* m, dbms_data_t* dd) {
 		lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR);
 		remove_pair_id_topic(dd->inv_index);
 		m->opcode = OC_ACK_FAILURE;
+		lock_release(dd->inv_index);
 		return;
 	}
 	// If here, subscription was a success
+	lock_release(dd->inv_index);
 	m->opcode = OC_ACK_SUCCESS;
 }
 
@@ -114,12 +120,13 @@ bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path, dbms_dat
 	strcpy(forwarded.payload, m->payload);
 	// Retrieve subscribers file and open it
 	topic_to_subscribers(topic_path, subs_file);
-	// TODO: lock subs_file
-	int fd = open(subs_file, O_RDONLY | O_CREAT, 0644);
+	// Lock subs_file
+	int fd = lock_create(subs_file);
 	if(fd < 0) {
 		printf("%d: Error opening subscribers file %s: %d\n", getpid(), topic_path, errno);
 		return false;
 	}
+	lock_acquire(fd, false);
 	// Iterate through file, finding users subscribed to topic_path
 	long id; char t[TOPIC_LENGTH];
 	while(read_pair_id_topic(fd, &id, t)) {
@@ -133,7 +140,8 @@ bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path, dbms_dat
 		}
 	}
 	
-	close(fd);
+	lock_release(fd);
+	lock_destroy(fd);
 	return true;
 }
 
@@ -177,10 +185,12 @@ void unregister_user(mom_message_t* m, dbms_data_t* dd) {
 		m->opcode = OC_ACK_FAILURE;
 		return;
 	}
+	lock_acquire(dd->inv_index, true);
 	// Seek at the beginning of inv_table
 	if(lseek(dd->inv_index, 0, SEEK_SET) < 0) {
 		printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);
 		m->opcode = OC_ACK_FAILURE;
+		lock_release(dd->inv_index);
 		return;
 	}	
 	// Scan inverted index table
@@ -191,78 +201,101 @@ void unregister_user(mom_message_t* m, dbms_data_t* dd) {
 			// Hence, delete them from there
 			char subs_file[PATH_MAX] = {0};
 			topic_to_subscribers(t, subs_file);
-			int fd = open(subs_file, O_RDWR | O_CREAT, 0644);
+			int fd = lock_create(subs_file);
 			if(fd < 0) {
 				printf("%d: Error opening subscribers file %s: %d\n", getpid(), subs_file, errno);
 				continue;
 			}
+			lock_acquire(fd, true);
 			// First find offset at user position
 			off_t p = find_pair_id_topic(fd, id, t);
 			if(p < 0) { // Should not happen if file system is not corrupted
-				printf("%d: Error finding %ld with topic %s in file %s: %d\n", getpid(), id, t, subs_file, errno);
-				close(fd);
+				printf("%d: Error finding %ld with topic %s in file %s: %d\n", getpid(), id, t, subs_file, errno);	
+				lock_release(fd);
+				lock_destroy(fd);
 				continue;			
 			}
 			
 			if(lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR) < 0) {
-				printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);
-				close(fd);
+				printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);	
+				lock_release(fd);
+				lock_destroy(fd);
 				continue;
 			}
 			if(lseek(fd, p, SEEK_SET) < 0) {
-				printf("%d: Error seeking in subscribers file %s: %d\n", getpid(), subs_file, errno);
-				close(fd);
+				printf("%d: Error seeking in subscribers file %s: %d\n", getpid(), subs_file, errno);	
+				lock_release(fd);
+				lock_destroy(fd);
 				continue;
 			}
 			
 			// Delete from subs_file and inv_index
 			if((!remove_pair_id_topic(fd)) || (!remove_pair_id_topic(dd->inv_index))) {
-				printf("%d: Error removing user %ld with topic %s: %d\n", getpid(), id, t, errno);
-				close(fd);
+				printf("%d: Error removing user %ld with topic %s: %d\n", getpid(), id, t, errno);	
+				lock_release(fd);
+				lock_destroy(fd);
 				continue;
 			}
 			
-			close(fd);
+			lock_release(fd);
+			lock_destroy(fd);
 		}
 	}
 	
 	// If here, no more deleting needed
+	lock_release(dd->inv_index);
 	m->opcode = OC_ACK_SUCCESS;
 }
 
 
 void process_message(mom_message_t* m, dbms_data_t* dd) {
-	// TODO: Fork here and change returns for exits
-	switch(m->opcode) {
-		// User has just created mom
-		case OC_CREATE:
-			register_user(m, dd);
-			return;
-		
+	// The DBMS will only hadle registration. Publishing, 
+	// subscribing and unsubscribing will be done by workers
+	if(m->opcode == OC_CREATE) {
+		register_user(m, dd);
+		msq_send(dd->msqid_s, m, sizeof(mom_message_t));
+		return;
+	}
+	// Fork a DBMS worker to process m
+	pid_t pid = fork();
+	if(pid < 0) {
+		printf("%d: Error launching a DBMS worker: %d\n", getpid(), errno);
+		return;
+	}
+	if(pid > 0) { // If father, real DBMS
+		return;
+	}
+	// DBMS should never reach here, only workers
+	printf("%d: A DBMS worker is processing a message...\n", getpid());
+	switch(m->opcode) {		
 		// User has subscribed
 		case OC_SUBSCRIBE:
 			m->mtype = m->global_id;
 			subscribe_user(m, dd);
-			return;
+			break;
 			
 		// User has published smth
 		case OC_PUBLISH:
 			m->mtype = m->global_id;
 			publish_message(m, dd);
-			return;
+			break;
 		
 		// User has destroyed mom
 		case OC_DESTROY:
 			m->mtype = m->global_id;
 			unregister_user(m, dd);
-			return;
+			break;
 		
 		// Should never happen
 		default:
-			printf("%d: Warning! Received a not valid opcode of%d\n", getpid(), m->opcode);
+			printf("%d: Warning! Received a not valid opcode of value %d\n", getpid(), m->opcode);
 			m->opcode = OC_ACK_FAILURE;
-			return;
+			exit(-1);
 	}
+	
+	// Forward response to sender
+	msq_send(dd->msqid_s, m, sizeof(mom_message_t));
+	exit(0);
 	
 }
 
@@ -320,15 +353,12 @@ int main(int argc, char* argv[]) {
 		mom_message_t m = {0};
 		msq_rcv(dd.msqid_h, &m, sizeof(mom_message_t), 0);
 		if(!keep_looping)	break;
-		printf("%d: DBMS now processing message...\n", getpid());
 		// Message processing
 		process_message(&m, &dd);
-		// Forward response to sender
-		msq_send(dd.msqid_s, &m, sizeof(mom_message_t));
 	}
 	
 	printf("\nClosing DBMS...\n");
-	close(dd.inv_index);
+	lock_destroy(dd.inv_index);
 	return 0;
 }
 

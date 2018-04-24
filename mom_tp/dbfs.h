@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <fcntl.h>
 
+#include "libs/lock.h"
+
 // --------- Auxiliar functions to deal with DB File System ---------
 
 
@@ -93,7 +95,7 @@ bool create_subscribers_file(char* topic_path){
 /* Creates the inverted_index file, used to store the topics each
  user has subscribed to. Returns the index file descriptor. */
 int create_inverted_index() {
-	int fd = open(INVERTED_INDEX, O_RDWR | O_CREAT, 0644);
+	int fd = lock_create(INVERTED_INDEX);
 	if(fd < 0) 
 		printf("%d: Error creating %s: %d\n", getpid(), INVERTED_INDEX, errno);
 	if(lseek(fd, 0, SEEK_END) < 0) {
@@ -120,8 +122,9 @@ bool write_pair_id_topic(int fd, long user_id, char* topic_path) {
  meaning a subscription. Returns true on success, false otherwise.*/
 bool read_pair_id_topic(int fd, long* user_id, char* topic_path) {
 	char aux[SUBS_LINE_SIZE] = {0};
-	if(read(fd, aux, SUBS_LINE_SIZE) <= 0)
+	if(read(fd, aux, SUBS_LINE_SIZE) <= 0) {
 		return false;
+	}
 	// Parse aux with sscanf magic
 	sscanf(aux, "%ld %s ", user_id, topic_path);
 	return true;
@@ -133,6 +136,7 @@ bool read_pair_id_topic(int fd, long* user_id, char* topic_path) {
 off_t find_pair_id_topic(int fd, long user_id, char* topic_path) {
 	if(lseek(fd, 0, SEEK_SET) < 0) {
 		printf("%d: Error seeking at subscribers file: %d\n", getpid(), errno);
+		lock_release(fd);
 		return -1;
 	}
 	// Iterate through file until finding the desired line
@@ -141,17 +145,19 @@ off_t find_pair_id_topic(int fd, long user_id, char* topic_path) {
 		bool is_desired = (strcmp(t, topic_path) == 0);
 		is_desired &= (id == user_id);
 		if(is_desired) {
+			// Get current location offset
 			off_t loc = lseek(fd, -SUBS_LINE_SIZE, SEEK_CUR);
 			if(loc < 0) {
 				printf("%d: Error seeking at subscribers file: %d\n", getpid(), errno);
+				lock_release(fd);
 				return -1;
 			}
+			lock_release(fd);
 			return loc;
 		}
 	}
 	// If here, the pair isnt in the file
 	return -1;
-	
 }
 
 /* Deletes from PREVIOUSLY OPENED FILE fd the NEXT pair user_id vs 
@@ -186,43 +192,58 @@ bool remove_pair_id_topic(int fd) {
 		printf("%d: Error truncating subscribers file: %d\n", getpid(), errno);
 		return false;
 	}
+
 	return true;
 }
 
 /* Adds a user whose global id is user_id to the subscribers file
  located at file_path. Returns true on success, false otherwise. */
 bool add_user_at_subscriber_file(char* file_path, long user_id, char* topic_path) {
-	// TODO: lock file_path
-	int fd = open(file_path, O_RDWR | O_APPEND | O_CREAT, 0644);
-	if(fd < 0) {
-		printf("%d: Error opening subscribers file %s: %d\n", getpid(), file_path, errno);
+	int fd = lock_create(file_path);
+	lock_acquire(fd, true);
+	
+	if(lseek(fd, 0, SEEK_END) < 0) {
+		printf("%d: Error seeking in subscriber file: %d\n", getpid(), errno);
+		lock_release(fd);
+		lock_destroy(fd);
 		return false;
 	}
 	
 	if(!write_pair_id_topic(fd, user_id, topic_path)) {
 		printf("%d: Error writing to subscribers file %s: %d\n", getpid(), file_path, errno);
+		lock_release(fd);
+		lock_destroy(fd);
 		return false;
 	}
-	close(fd);
+	
+	lock_release(fd);
+	lock_destroy(fd);
 	return true;
 }
 
 /* Adds a message published by user with global id given to the topic
  located at topic_path. Returns true on success, false otherwise. */
 bool publish_at_topic_file(char* topic_path, long user_id, char* message) {
-	// TODO: lock topic_path
-	int fd = open(topic_path, O_RDWR | O_APPEND | O_CREAT, 0644);
-	if(fd < 0) {
-		printf("%d: Error opening topics file %s: %d\n", getpid(), topic_path, errno);
+	int fd = lock_create(topic_path);
+	lock_acquire(fd, true);
+	
+	if(lseek(fd, 0, SEEK_END) < 0) {
+		printf("%d: Error seeking in topics file: %d\n", getpid(), errno);
+		lock_release(fd);
+		lock_destroy(fd);
 		return false;
 	}
+
 	char aux[PAYLOAD_SIZE + ID_MAX_LENGTH] = {0};
 	sprintf(aux, "%ld %s\n", user_id, message);
 	if(write(fd, aux, strlen(aux)) < 0) {
 		printf("%d: Error writing at topics file %s: %d\n", getpid(), topic_path, errno);
+		lock_release(fd);
+		lock_destroy(fd);
 		return false;
 	}
-	close(fd);
+	lock_release(fd);
+	lock_destroy(fd);
 	return true;
 }
 

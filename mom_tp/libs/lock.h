@@ -25,7 +25,7 @@
 */
 
 int lock_create(char* file){
-	int fd = open(file, O_CREAT|O_WRONLY, 0777);
+	int fd = open(file, O_CREAT|O_RDWR, 0777);
 	if(fd < 0){
 		printf("%d: Error opening file %s for lock: %d\n", getpid(), file, errno);
 		exit(-1);

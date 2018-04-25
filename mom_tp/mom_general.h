@@ -33,14 +33,14 @@ typedef enum opcode_ {
 
 
 typedef  struct mom_message_ {
+	long mtype;
+	
 	long local_id;
 	long global_id;
 	opcode_t opcode;
 	char topic[TOPIC_LENGTH];
 	
 	char payload[PAYLOAD_SIZE];
-	
-	long mtype;
 	
 } mom_message_t;
 

@@ -115,7 +115,7 @@ void subscribe_user(mom_message_t* m, dbms_data_t* dd) {
 bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path, dbms_data_t* dd){
 	char subs_file[PATH_MAX] = {0};
 	// Copy m into a forwarded message
-	mom_message_t forwarded = {m->local_id, m->global_id, OC_DELIVERED," ", " ", m->mtype};
+	mom_message_t forwarded = {m->mtype, m->local_id, m->global_id, OC_DELIVERED," ", " "};
 	strcpy(forwarded.topic, m->topic);
 	strcpy(forwarded.payload, m->payload);
 	// Retrieve subscribers file and open it

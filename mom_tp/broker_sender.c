@@ -55,11 +55,10 @@ int main(int argc, char* argv[]) {
 	// Sender main loop
 	while(keep_looping) {
 		mom_message_t m = {0};
-		msq_rcv(msqid, &m, sizeof(mom_message_t), 0);
+		msq_rcv(msqid, &m, sizeof(mom_message_t), this_mtype);
 		if(!keep_looping)	break;
-		printf("%d: A sender is delivering a message to a machine!\n", getpid());
+		printf("%ld: A sender is delivering a message to a machine!\n", this_mtype);
 		print_message(m);
-		this_mtype = m.global_id;
 		SOCKET_S(s, mom_message_t, m);	
 	}
 	

@@ -14,6 +14,7 @@
 
 #include "mom_general.h"
 #include "dbfs.h"
+#include "libs/vector.h"
 #include "libs/msq.h"
 #include "libs/argv_parser.h"
 
@@ -27,6 +28,8 @@ typedef  struct dbms_data_ {
 	int msqid_s;
 
 	int inv_index;
+	
+	vector_t* mtypes_table;
 	
 } dbms_data_t;
 
@@ -54,6 +57,7 @@ void register_user(mom_message_t* m, dbms_data_t* dd) {
 	}
 	m->global_id = dd->global_id;
 	m->opcode = OC_ACK_SUCCESS;
+	vector_set(dd->mtypes_table, dd->global_id, m->mtype);
 	dd->global_id++;
 }
 
@@ -134,7 +138,7 @@ bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path, dbms_dat
 		have_to_forward &= (id != m->global_id); // Dont send messages to the sender
 		if(have_to_forward) {
 			// Really forward message
-			forwarded.mtype = id;
+			vector_get(dd->mtypes_table, id, &forwarded.mtype);
 			forwarded.local_id = id;
 			msq_send(dd->msqid_s, &forwarded, sizeof(mom_message_t));
 		}
@@ -270,19 +274,16 @@ void process_message(mom_message_t* m, dbms_data_t* dd) {
 	switch(m->opcode) {		
 		// User has subscribed
 		case OC_SUBSCRIBE:
-			m->mtype = m->global_id;
 			subscribe_user(m, dd);
 			break;
 			
 		// User has published smth
 		case OC_PUBLISH:
-			m->mtype = m->global_id;
 			publish_message(m, dd);
 			break;
 		
 		// User has destroyed mom
 		case OC_DESTROY:
-			m->mtype = m->global_id;
 			unregister_user(m, dd);
 			break;
 		
@@ -331,6 +332,12 @@ int main(int argc, char* argv[]) {
 	if((dd.inv_index < 0) || (!create_directory(TOPICS_DIR)))
 		return -1;
 	
+	dd.mtypes_table = vector_create();
+	if(!dd.mtypes_table) {
+		printf("%d: Error creating local mtypes table:%d\n", getpid(), errno);
+		exit(-1);
+	}
+	
 	// Use argv_parser to retrieve msqids
 	ap_t* ap = ap_create_from_argv(argc, argv);
 	if(!ap) {
@@ -359,6 +366,7 @@ int main(int argc, char* argv[]) {
 	
 	printf("\nClosing DBMS...\n");
 	lock_destroy(dd.inv_index);
+	vector_destroy(dd.mtypes_table);
 	return 0;
 }
 

@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
 	}
 	
 	mom_subscribe(mom, "Museum/Guide");
-	subscribe_to_coordinator(mom);
+	subscribe_to_coordinator(mom, PRIORITY_GUIDE);
 					
 	printf("%d: I am the guide and I've just spawned!\n", getpid());						
 

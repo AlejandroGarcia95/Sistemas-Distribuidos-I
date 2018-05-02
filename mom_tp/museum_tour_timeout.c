@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
 	}
 	
 	sleep(2);
-	subscribe_to_coordinator(mom);
+	subscribe_to_coordinator(mom, PRIORITY_TIMEOUT);
 				
 	int i;
 	// timeout main loop

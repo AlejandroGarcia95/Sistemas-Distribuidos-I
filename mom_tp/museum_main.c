@@ -123,7 +123,7 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 	
-	subscribe_to_coordinator(mom);
+	subscribe_to_coordinator(mom, PRIORITY_MAIN);
 	
 	dsem_init(mom, "sem_capacity", 1);
 	dshm_init(mom, "shm_capacity", MUSEUM_CAPACITY);

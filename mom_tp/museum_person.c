@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
 		exit(-1);
 	}	
 	
-	subscribe_to_coordinator(mom);
+	subscribe_to_coordinator(mom, PRIORITY_PERSON);
 	
 	int person_id;
 	ap_get_int(ap, "Person id", &person_id);

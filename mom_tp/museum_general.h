@@ -8,11 +8,11 @@
 
 #include "mom.h"
 
-#define DOOR_AMOUNT 4
+#define DOOR_AMOUNT 3
 #define SIMULATE_FOREVER 0	// If setting this, increase delay timing
-#define PEOPLE_AMOUNT 26
-#define PEOPLE_TOUR 5
-#define MUSEUM_CAPACITY 9
+#define PEOPLE_AMOUNT 12
+#define PEOPLE_TOUR 3
+#define MUSEUM_CAPACITY 6
 #define PERSON_PROB_SPAWNING 80
 #define PERSON_PROB_TOUR 80
 // Delay in seconds
@@ -28,13 +28,22 @@
 #define CODE_REQUEST_EXIT 4
 #define CODE_REQUEST_TOUR 5
 
+
+// Priorities for coordinator
+
+#define PRIORITY_PERSON 1
+#define PRIORITY_GUIDE 3
+#define PRIORITY_DOOR 3
+#define PRIORITY_TIMEOUT 2
+#define PRIORITY_MAIN 5
+
 // Comunication with coordinator of dshm and dsem
 
 #define COORD_TOPIC "Museum/Coordinator"
 
 #define COORD_MSG_SIZE 70
 
-void subscribe_to_coordinator(mom_t* mom);
+void subscribe_to_coordinator(mom_t* mom, int priority);
 
 void dshm_init(mom_t* mom, char* name, int value);
 

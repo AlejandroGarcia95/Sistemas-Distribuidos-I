@@ -9,11 +9,13 @@ import sys
 class Potential:
 	def __init__(self):
 		self.mom = Mom()
-		self.topic = "Museum/" + self._getPotentialId()
+		self.potId = ""
+		self._setPotentialId(sys.argv[1])
+		self.topic = "Museum/" + self.potId
 		self.mom.subscribe(self.topic)
 		
-	def _getPotentialId(self):
-		return str(os.getpid())
+	def _setPotentialId(self, priority):
+		self.potId =  str(os.getpid() + int(priority) * 100000)
 	
 	def potentialLoop(self):
 		while(1):
@@ -21,7 +23,7 @@ class Potential:
 				msg = raw_input()
 			except EOFError:
 				break
-			msg = self._getPotentialId() + ":" + msg
+			msg = self.potId + ":" + msg
 			self.mom.publish("Museum/Coordinator", msg)
 			msg = self.mom.receive()
 			try:

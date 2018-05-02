@@ -40,7 +40,7 @@ int send_message_to_coord(mom_t* mom, char* m) {
 	return r;
 }
 
-void subscribe_to_coordinator(mom_t* mom){
+void subscribe_to_coordinator(mom_t* mom, int priority){
 	
 	if(pipe(parent_pipe) || pipe(child_pipe)) {
         printf("%d: Error subscribing to coordinator: %d\n", getpid(), errno);
@@ -59,7 +59,9 @@ void subscribe_to_coordinator(mom_t* mom){
         close(parent_pipe[0]);
         dup2(child_pipe[0], 0);
         dup2(parent_pipe[1], 1);
-		system("python potential.py");
+        char cmd_potential[50] = {0};
+        sprintf(cmd_potential, "python potential.py %d", priority);
+		system(cmd_potential);
         close(child_pipe[0]);
         close(parent_pipe[1]);
 		exit(0);

@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
 		exit(-1);
 	}	
 	
-	subscribe_to_coordinator(mom);
+	subscribe_to_coordinator(mom, PRIORITY_DOOR);
 	
 	int door_id;
 	ap_get_int(ap, "door_id", &door_id);
@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
 	sprintf(my_topic, "Museum/Doors/Door%d", door_id);
 	mom_subscribe(mom, my_topic);
 	
-	printf("%d: I am door %d, have subscribed to %s and am ready!\n", getpid(), door_id, my_topic);
+	printf("%d: I am door %d and I'm ready!\n", getpid(), door_id);
 	
 	// Door main loop
 	while(1) {

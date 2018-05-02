@@ -45,6 +45,8 @@ clean:
 	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(BROKER) $(BROKER_PROCESSES) $(MUSEUM) $(MUSEUM_PROCESSES)
 	rm -f $(LIBS_O)
 	rm -f *~ *.pyc
+	rm -r -f Topics
+	rm -f inv_index.txt
 	sh ipcrma.sh
 
 valgrind: clean $(PROGRAM)

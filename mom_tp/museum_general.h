@@ -8,25 +8,25 @@
 
 #include "mom.h"
 
-#define DOOR_AMOUNT 3
+#define DOOR_AMOUNT 4
 #define SIMULATE_FOREVER 0	// If setting this, increase delay timing
 #define PEOPLE_AMOUNT 26
-#define PEOPLE_TOUR 6
-#define MUSEUM_CAPACITY 12
+#define PEOPLE_TOUR 5
+#define MUSEUM_CAPACITY 9
 #define PERSON_PROB_SPAWNING 80
 #define PERSON_PROB_TOUR 80
-// Delay in microseconds
-#define TIME_PERSON_SPAWN 1000
-#define TIME_DOOR_RESP 1500
-#define TIME_PERSON_INSIDE 10000
-#define TIME_TOUR_TIMEOUT 60000
-#define TIME_TOUR_DURATION 8000
+// Delay in seconds
+#define TIME_PERSON_SPAWN 2
+#define TIME_DOOR_RESP 1
+#define TIME_PERSON_INSIDE 5
+#define TIME_TOUR_TIMEOUT 10
+#define TIME_TOUR_DURATION 7
 
-#define ACCEPTED 1
-#define REJECTED 2
-#define REQUEST_ENTER 3
-#define REQUEST_EXIT 4
-#define REQUEST_TOUR 5
+#define CODE_ACCEPTED 1
+#define CODE_REJECTED 2
+#define CODE_REQUEST_ENTER 3
+#define CODE_REQUEST_EXIT 4
+#define CODE_REQUEST_TOUR 5
 
 // Comunication with coordinator of dshm and dsem
 
@@ -34,6 +34,7 @@
 
 #define COORD_MSG_SIZE 70
 
+void subscribe_to_coordinator(mom_t* mom);
 
 void dshm_init(mom_t* mom, char* name, int value);
 
@@ -46,5 +47,8 @@ void dsem_init(mom_t* mom, char* name, int value);
 void dsem_signal(mom_t* mom, char* name);
 
 void dsem_wait(mom_t* mom, char* name);
+
+void dsem_destroy(mom_t* mom, char* name);
+void dshm_destroy(mom_t* mom, char* name);
 
 #endif

@@ -167,7 +167,7 @@ class Mom:
 		if (ropc != OC_DELIVERED):
 			print(str(os.getpid()) + ": MOM CRITICAL ON RECEIVING: Daemon has not delivered message!\n")
 			return None
-		return response.getPayload()
+		return response.getPayload().rstrip('\x00')
 		
 	def subscribe(self, topic):
 		if (topic is None):

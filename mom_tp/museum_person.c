@@ -6,64 +6,58 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <time.h>
-
+#include <errno.h>
 
 #include "mom.h"
 #include "museum_general.h"
 #include "libs/argv_parser.h"
 
 
-int main(){
-	return 0;
-}
-
-/*
-void take_tour(ap_t* ap, int person_id){
-	int req_q, resp_q, shmid, semid, semid_vacancy;
-	ap_get_int(ap, "tour_request", &req_q);
-	ap_get_int(ap, "tour_response", &resp_q);
-	ap_get_int(ap, "shmid_tour", &shmid);
-	ap_get_int(ap, "semid_tour", &semid);
-	ap_get_int(ap, "semid_vacancy", &semid_vacancy);
+void take_tour(mom_t* mom, int person_id){
+	dsem_wait(mom, "sem_vacancy");
+	int ppl_tour;
+	dshm_read(mom, "shm_tour", &ppl_tour);
+	ppl_tour++;
+	dshm_write(mom, "shm_tour", ppl_tour);
+	printf("%d: Person %d has signed for tour (%d are waiting)\n", getpid(), person_id, ppl_tour);
 	
-	int* people_tour = shm_attach(shmid);
-	sem_wait(semid_vacancy, 0);
-	*people_tour = *people_tour + 1;
-	printf("%d: Person %d has signed for tour\n", getpid(), person_id);
-	message_t msg = {person_id, REQUEST_TOUR};
-	msq_send(req_q, &msg, sizeof(message_t));
-	if((*people_tour) == PEOPLE_TOUR)
-		sem_signal(semid, 0);
-	sem_signal(semid_vacancy, 0);
+	//dsem_wait(mom, "sem_guide");
+	
+	char msg[15] = {0};
+	sprintf(msg, "%d %d", person_id, CODE_REQUEST_TOUR); // sender_id code_number
+	mom_publish(mom, "Museum/Guide", msg);
+	
+	if(ppl_tour == PEOPLE_TOUR) {
+		printf("%d: Tour party is full (%d people). Telling the guide!\n", getpid(), ppl_tour);
+		dsem_signal(mom, "sem_tour");
+	}
+	dsem_signal(mom, "sem_vacancy");
 	printf("%d: Person %d is waiting the guide\n", getpid(), person_id);
 	
-	msq_rcv(resp_q, &msg, sizeof(message_t), person_id);
+	mom_receive(mom, msg);
 	printf("%d: Person %d is going with the guide\n", getpid(), person_id);
 	sleep(TIME_TOUR_DURATION);
 }
 
-void inside_museum(ap_t* ap, int person_id){
+void inside_museum(mom_t* mom, int person_id){
 	if((rand() % 100) <= PERSON_PROB_TOUR)
-		take_tour(ap, person_id);
+		take_tour(mom, person_id);
 	else
 		sleep(TIME_PERSON_INSIDE + (rand() % TIME_PERSON_INSIDE)); // Spend some time inside museum
 	// Randomly choose door
 	int door_id = rand() % DOOR_AMOUNT;
-	// Retrieve that door queues
-	char req_q_name[40], resp_q_name[40];
-	sprintf(req_q_name, "request_queue_%d", door_id);
-	sprintf(resp_q_name, "response_queue_%d", door_id);
-	int req_q, resp_q;
-	ap_get_int(ap, req_q_name, &req_q);
-	ap_get_int(ap, resp_q_name, &resp_q);
+	char door_topic[26];
+	sprintf(door_topic, "Museum/Doors/Door%d", door_id);
+
 	// Send request to exit
-	message_t msg = {person_id, REQUEST_EXIT};
+	char msg[15] = {0};
+	sprintf(msg, "%d %d", person_id, CODE_REQUEST_EXIT); // sender_id code_number
 	
 	printf("%d: Person %d requesting to exit through door %d\n", getpid(), person_id, door_id);
-	msq_send(req_q, &msg, sizeof(message_t));
+	mom_publish(mom, door_topic, msg);
 	
 	// Receive response
-	msq_rcv(resp_q, &msg, sizeof(msg), person_id);
+	mom_receive(mom, msg);
 }
 
 int main(int argc, char* argv[]) {
@@ -74,39 +68,51 @@ int main(int argc, char* argv[]) {
 		printf("Error creating argv_parser:%d\n", errno);
 		exit(-1);
 	}
+		
+	mom_t* mom = mom_create();
+	if(!ap) {
+		printf("%d: Error creating mom for person: %d\n", getpid(), errno);
+		ap_destroy(ap);
+		exit(-1);
+	}	
+	
+	subscribe_to_coordinator(mom);
 	
 	int person_id;
 	ap_get_int(ap, "Person id", &person_id);
+		
+	char my_topic[26];
+	sprintf(my_topic, "Museum/People/Person%d", person_id);
+	mom_subscribe(mom, my_topic);
+	
+	printf("%d: Person %d has just spawned\n", getpid(), person_id);
 	
 	// Randomly choose door
 	int door_id = rand() % DOOR_AMOUNT;
-	
-	// Retrieve that door queues
-	char req_q_name[40], resp_q_name[40];
-	sprintf(req_q_name, "request_queue_%d", door_id);
-	sprintf(resp_q_name, "response_queue_%d", door_id);
-	int req_q, resp_q;
-	ap_get_int(ap, req_q_name, &req_q);
-	ap_get_int(ap, resp_q_name, &resp_q);
+	char door_topic[26];
+	sprintf(door_topic, "Museum/Doors/Door%d", door_id);
 	
 	// Send request to enter
-	message_t msg = {person_id, REQUEST_ENTER};
+	char msg[15] = {0};
+	sprintf(msg, "%d %d", person_id, CODE_REQUEST_ENTER); // sender_id code_number
 	
 	printf("%d: Person %d requesting to enter through door %d\n", getpid(), person_id, door_id);
-	msq_send(req_q, &msg, sizeof(message_t));
+	mom_publish(mom, door_topic, msg);
 	
 	// Receive response
-	msq_rcv(resp_q, &msg, sizeof(msg), person_id);
-	if(msg.msg_type == ACCEPTED) {
+	mom_receive(mom, msg);
+	int msg_code;
+	sscanf(msg, "%d %d", &door_id, &msg_code);
+	if(msg_code == CODE_ACCEPTED) {
 		printf("%d: Person %d was accepted by door %d\n", getpid(), person_id, door_id);
-		inside_museum(ap, person_id);		
+		inside_museum(mom, person_id);		
 	}
 	else {
 		printf("%d: Person %d was rejected by door %d\n", getpid(), person_id, door_id);
 	}
 
-	
+	mom_destroy(mom);
 	ap_destroy(ap);
 	exit(0);
 }
-*/
+

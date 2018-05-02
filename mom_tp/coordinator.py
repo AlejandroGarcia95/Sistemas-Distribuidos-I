@@ -30,6 +30,12 @@ class Coordinator:
 		self.shmTable[name] = value
 		return True
 
+	def _shmDestroy(self, name):
+		if not name in self.shmTable:
+			return False
+		self.shmTable.pop(name)
+		return True
+
 	def _shmRead(self, name):
 		if name in self.shmTable:
 			return self.shmTable[name]
@@ -65,13 +71,28 @@ class Coordinator:
 		if name in self.semTable:
 			value, pList = self.semTable[name]
 			if len(pList) > 0:
+				if value > 0:
+					print "SOMETHING WENT TERRIBLY WRONG: SEM HASNT PROPERLY WAIT"
 				nextProc = pList.pop(0)
 				# Wakeup nextProc
 				processTopic = "Museum/" + nextProc
 				self.mom.publish(processTopic, "Coord:1")
-			self.semTable[name] = (value + 1, pList)
+			else:
+				value += 1
+			self.semTable[name] = (value, pList)
 			return True
 		return False
+		
+	def _semDestroy(self, name):
+		if name in self.semTable:
+			value, pList = self.semTable[name]
+			# Wakeup all processes
+			for proc in pList:
+				processTopic = "Museum/" + proc
+				self.mom.publish(processTopic, "Coord:0")
+			self.semTable.pop(name)
+			return True
+		return False		
 
 	def fetchNextOrder(self):
 		return self.mom.receive()
@@ -87,7 +108,7 @@ class Coordinator:
 		if shrdRsc == "SHM":
 			# shm_init
 			if action == "INIT":
-				return self._shmInit(name, int(lOrder[3].rstrip('\x00')))
+				return self._shmInit(name, int(lOrder[3]))
 			# shm_read
 			elif action == "READ":
 				r = self._shmRead(name)
@@ -97,7 +118,10 @@ class Coordinator:
 					return "0"	# Be careful not to confuse with 0 value
 			# shm_write
 			elif action == "WRITE":
-				return self._shmWrite(name, int(lOrder[3].rstrip('\x00')))
+				return self._shmWrite(name, int(lOrder[3]))
+			# shm_destoy
+			elif action == "DESTROY":
+				return self._shmDestroy(name)
 			# Wrong shm action		
 			else:
 				return "0"
@@ -105,13 +129,16 @@ class Coordinator:
 		elif shrdRsc == "SEM":
 			# sem_init
 			if action == "INIT":
-				return self._semInit(name, int(lOrder[3].rstrip('\x00')))
+				return self._semInit(name, int(lOrder[3]))
 			# sem_signal
 			elif action == "SIGNAL":
 				return self._semSignal(name)
 			# sem_wait
 			elif action == "WAIT":
 				return self._semWait(name, processId)
+			# sem_write
+			elif action == "DESTROY":
+				return self._semDestroy(name)
 			# Wrong sem action
 			else:
 				return "0"
@@ -134,6 +161,11 @@ class Coordinator:
 		else:
 			self.mom.publish(processTopic, "Coord:" + str(r))
 		
+	def printStatus(self):
+		print "STATUS"
+		print("SHMs: " + str(self.shmTable))
+		print("SEMs: " + str(self.semTable))
+		
 		
 # Main
 
@@ -141,7 +173,12 @@ cnator = Coordinator()
 _ = os.system("clear")
 print "Coordinator is up!"
 while(1):
-	print "Awaiting order..."
-	order = cnator.fetchNextOrder()
-	print("Executing order: " + order)
-	cnator.executeOrder(order)
+	try:
+		print "Awaiting order..."
+		order = cnator.fetchNextOrder()
+		print("Executing order: " + order)
+		cnator.executeOrder(order)
+		cnator.printStatus()
+	except:
+		print "Closing coordinator..."
+		break

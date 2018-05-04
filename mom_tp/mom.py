@@ -19,6 +19,7 @@ OC_ACK_SUCCESS = 5
 OC_ACK_FAILURE = 6
 OC_DELIVERED = 7
 OC_SEPPUKU = 8
+OC_UNSUBSCRIBE = 9
 
 PAYLOAD_SIZE = 255
 TOPIC_LENGTH = 100
@@ -182,6 +183,24 @@ class Mom:
 		ropc = response.getOpcode()
 		if (ropc != OC_ACK_FAILURE) and (ropc != OC_ACK_SUCCESS):
 			print(str(os.getpid()) + ": MOM CRITICAL ON SUBSCRIBING: Daemon answer was not ACK!\n")
+			self = None
+			return
+
+		return (ropc == OC_ACK_SUCCESS)
+	
+	def unsubscribe(self, topic):
+		if (topic is None):
+			print(str(os.getpid()) + ": Invalid argument in mom_unsubscribe: None received\n", );
+			return False
+		if not self._topicIsValid(topic):
+			return False
+		# Write and read unsubscribe message
+		m = MomMessage(self.localId, self.globalId, OC_UNSUBSCRIBE)
+		m.setTopic(topic)
+		response = self._sendMessageToDaemon(m)
+		ropc = response.getOpcode()
+		if (ropc != OC_ACK_FAILURE) and (ropc != OC_ACK_SUCCESS):
+			print(str(os.getpid()) + ": MOM CRITICAL ON UNSUBSCRIBING: Daemon answer was not ACK!\n")
 			self = None
 			return
 

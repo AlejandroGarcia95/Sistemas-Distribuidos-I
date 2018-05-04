@@ -20,6 +20,8 @@ bool mom_publish(mom_t* mom, char* topic, const void *msg);
 
 bool mom_subscribe(mom_t* mom, char* topic);
 
+bool mom_unsubscribe(mom_t* mom, char* topic);
+
 bool mom_receive(mom_t* mom, void* msg);
 
 void mom_destroy(mom_t* mom);

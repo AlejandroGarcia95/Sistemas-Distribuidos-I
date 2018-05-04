@@ -27,7 +27,8 @@ typedef enum opcode_ {
 	OC_ACK_SUCCESS = 5, 
 	OC_ACK_FAILURE = 6,
 	OC_DELIVERED = 7, // Used by broker when sending message to all subscribers on topic
-	OC_SEPPUKU = 8 // Used by mom_daemon to tell handler to gracefully die
+	OC_SEPPUKU = 8, // Used by mom_daemon to tell handler to gracefully die
+	OC_UNSUBSCRIBE = 9
 	} opcode_t;
 	
 
@@ -48,8 +49,8 @@ typedef  struct mom_message_ {
 
 // Debug purposes only
 void print_message(mom_message_t m){
-	char* oc_str[] = 	{"", "CREATE", "DESTROY", "PUBLISH", "SUBSCRIBE", 
-						"ACK_SUCCESS", "ACK_FAILURE", "DELIVERED", "SEPPUKU"};
+	char* oc_str[] = 	{"", "CREATE", "DESTROY", "PUBLISH", "SUBSCRIBE", "ACK_SUCCESS", 
+						"ACK_FAILURE", "DELIVERED", "SEPPUKU", "UNSUBSCRIBE"};
 	printf("---------------------------------------------------\n");
 	printf("LOCAL ID: %ld\n", m.local_id);
 	printf("GLOBAL ID: %ld\n", m.global_id);

@@ -18,58 +18,58 @@ from mom import *
 COORDINATOR_TOPIC = "Museum/Coordinator/Coordinator"
 
 class Coordinator:
-	def __init__(self):
+	def __init__(self, mom):
 		# shmTable has shms stored as {name: value}
 		# semTable has sems stored as {name: (value, [process list])}
 		self.semTable = {}
 		self.shmTable = {}
-		self.mom = Mom()
-		self.mom.subscribe(COORDINATOR_TOPIC)
+		self.mom = mom
 
-	def _shmInit(self, name, value):
+	def _shmInit(self, name, value, processTopic):
 		if name in self.shmTable:
-			return False
+			return [ (processTopic, False) ]
 		self.shmTable[name] = value
-		return True
+		return [ (processTopic, True) ]
 
-	def _shmDestroy(self, name):
+	def _shmDestroy(self, name, processTopic):
 		if not name in self.shmTable:
-			return False
+			return [ (processTopic, False) ]
 		self.shmTable.pop(name)
-		return True
+		return [ (processTopic, True) ]
 
-	def _shmRead(self, name):
+	def _shmRead(self, name, processTopic):
 		if name in self.shmTable:
-			return self.shmTable[name]
-		return None
+			return [ (processTopic, str(self.shmTable[name])) ]
+		return [ (processTopic, None) ]
 
-	def _shmWrite(self, name, value):
+	def _shmWrite(self, name, value, processTopic):
 		if name in self.shmTable:
 			self.shmTable[name] = value
-			return True
-		return False
+			return [ (processTopic, True) ]
+		return [ (processTopic, False) ]
 
-	def _semInit(self, name, value):
+	def _semInit(self, name, value, processTopic):
 		if name in self.semTable:
-			return False
+			return [ (processTopic, False) ]
 		if value < 0:
-			return False
+			return [ (processTopic, False) ]
 		self.semTable[name] = (value, [])
-		return True
+		return [ (processTopic, True) ]
 
-	def _semWait(self, name, processId):
+	def _semWait(self, name, processId, processTopic):
 		if name in self.semTable:
 			value, pList = self.semTable[name]
 			if value > 0:
 				self.semTable[name] = (value - 1, pList)
-				return True
+				return [ (processTopic, True) ]
 			else:	# Have to block process, hence dont answer
 				pList.append(processId)
 				self.semTable[name] = (0, pList)
-				return None
-		return False
+				return [ (processTopic, None) ]
+		return [ (processTopic, False) ]
 
-	def _semSignal(self, name):
+	def _semSignal(self, name, processTopic):
+		responses = []
 		if name in self.semTable:
 			value, pList = self.semTable[name]
 			if len(pList) > 0:
@@ -77,32 +77,33 @@ class Coordinator:
 					print "SOMETHING WENT TERRIBLY WRONG: SEM HASNT PROPERLY WAIT"
 				nextProc = pList.pop(0)
 				# Wakeup nextProc
-				processTopic = "Museum/" + nextProc
-				self.mom.publish(processTopic, "Coord:1")
+				nextProcTopic = "Museum/" + nextProc
+				responses.append( (nextProcTopic, "Coord:1") )
 			else:
 				value += 1
 			self.semTable[name] = (value, pList)
-			return True
-		return False
+			responses.append( (processTopic, True) )
+			return responses
+		return [ (processTopic, False) ]
 		
-	def _semDestroy(self, name):
+	def _semDestroy(self, name, processTopic):
+		responses = []
 		if name in self.semTable:
 			value, pList = self.semTable[name]
 			# Wakeup all processes
 			for proc in pList:
-				processTopic = "Museum/" + proc
-				self.mom.publish(processTopic, "Coord:0")
+				procTopic = "Museum/" + proc
+				responses.append( (procTopic, "Coord:0") )
 			self.semTable.pop(name)
-			return True
-		return False		
+			responses.append( (processTopic, True) )
+			return responses
+		return [ (processTopic, False) ]		
 
-	def fetchNextOrder(self):
-		return self.mom.receive()
 	
-	def _processOrder(self, order):
+	def _processOrder(self, order, processTopic):
 		lOrder = order.split()
 		if len(lOrder) < 3:
-			return "0"
+			return [ (processTopic, "0") ]
 		processId = lOrder[0].split(":")[0]
 		shrdRsc = lOrder[0].split(":")[1].upper()
 		action = lOrder[1].upper()
@@ -110,68 +111,75 @@ class Coordinator:
 		if shrdRsc == "SHM":
 			# shm_init
 			if action == "INIT":
-				return self._shmInit(name, int(lOrder[3]))
+				return self._shmInit(name, int(lOrder[3]), processTopic)
 			# shm_read
 			elif action == "READ":
-				r = self._shmRead(name)
-				if r is not None:
-					return str(r)
+				resp = self._shmRead(name, processTopic)
+				if resp[0][1] is not None:
+					return resp
 				else:
-					return "0"	# Be careful not to confuse with 0 value
+					return [ (processTopic, "0") ]	# Be careful not to confuse with 0 value
 			# shm_write
 			elif action == "WRITE":
-				return self._shmWrite(name, int(lOrder[3]))
+				return self._shmWrite(name, int(lOrder[3]), processTopic)
 			# shm_destoy
 			elif action == "DESTROY":
-				return self._shmDestroy(name)
+				return self._shmDestroy(name, processTopic)
 			# Wrong shm action		
 			else:
-				return "0"
+				return [ (processTopic, "0") ]
 		
 		elif shrdRsc == "SEM":
 			# sem_init
 			if action == "INIT":
-				return self._semInit(name, int(lOrder[3]))
+				return self._semInit(name, int(lOrder[3]), processTopic)
 			# sem_signal
 			elif action == "SIGNAL":
-				return self._semSignal(name)
+				return self._semSignal(name, processTopic)
 			# sem_wait
 			elif action == "WAIT":
-				return self._semWait(name, processId)
+				return self._semWait(name, processId, processTopic)
 			# sem_write
 			elif action == "DESTROY":
-				return self._semDestroy(name)
+				return self._semDestroy(name, processTopic)
 			# Wrong sem action
 			else:
-				return "0"
+				return [ (processTopic, "0") ]
 		# Wrong shared resource word
 		else:
-			return "0"
+			return [ (processTopic, "0") ]
 		
-	
 	def executeOrder(self, order):
 		if len(order) <= 5:
 			return
-		r = self._processOrder(order)
 		processTopic = "Museum/" + order.split()[0].split(":")[0]
-		if r is None:
-			return
-		elif r == True:
-			self.mom.publish(processTopic, "Coord:1")
-		elif r == False:
-			self.mom.publish(processTopic, "Coord:0")
-		else:
-			self.mom.publish(processTopic, "Coord:" + str(r))
+		return self._processOrder(order, processTopic)
+		
+		
+	def sendResponses(self, responses):
+		for r in responses:
+			if r[1] is None:
+				continue
+			elif r[1] == True:
+				print str(r) + " becomes " + str(r[0]) + " Coord:1"
+				self.mom.publish(r[0], "Coord:1")
+			elif r[1] == False:
+				print str(r) + " becomes " + str(r[0]) + " Coord:0"
+				self.mom.publish(r[0], "Coord:0")
+			else:
+				print str(r) + " becomes " + str(r[0]) + " " + str(r[1])
+				self.mom.publish(r[0], "Coord:" + str(r[1]))
 		
 	def printStatus(self):
 		print "STATUS"
 		print("SHMs: " + str(self.shmTable))
 		print("SEMs: " + str(self.semTable))
 		
-		
+"""		
 # Main
-
-cnator = Coordinator()
+mom = Mom()
+mom.subscribe(COORDINATOR_TOPIC)
+cnator = Coordinator(mom)
 _ = os.system("clear")
 print "Coordinator is up!"
 while(1):
@@ -184,3 +192,4 @@ while(1):
 	except:
 		print "Closing coordinator..."
 		break
+"""

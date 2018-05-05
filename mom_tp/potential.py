@@ -1,11 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from mom import *
 import sys
 from threading import *
 import os
 import signal
+from coordinator import *
 
 # Must be called as "python potential.py <potId> <potAmount>"
 
@@ -35,6 +35,7 @@ class Potential:
 		self._discoveryState()
 		self.leaderId = 1
 		self.t = None
+		self.cnator = Coordinator(self.mom)
 
 		
 	def _discoveryState(self):
@@ -52,33 +53,37 @@ class Potential:
 				discoveredStr = MSG_DISCOVERY + "".join(p + " " for p in newDiscovered)
 				self.mom.publish(DISCOVERY_TOPIC, discoveredStr)
 			discovered = newDiscovered
-			os.write(1, "Potential " + ownId + ": Received " + str(list(discovered)) + "\n")
+			os.write(1, "Pot " + ownId + ": Received " + str(list(discovered)) + "\n")
 			
 		# If here, all potential coordinators were discovered
-		os.write(1, "Potential " + ownId + ": Ready to rock!\n")
+		os.write(1, "Pot " + ownId + ": Ready to rock!\n")
 	
 	def _tmrLeader(self):
 		self.mom.publish(RESOURCES_TOPIC, MSG_LEADER_ALIVE)
 		self.t = Timer(TMR_UPDATE_RESOURCES, self._tmrLeader)
 		self.t.start()
-		os.write(1, "Potential " + str(self.potId) + ": Sending leader alive message\n") 
+		os.write(1, "Pot " + str(self.potId) + ": Sending leader alive message\n") 
 	
 	def _leaderState(self):
-		os.write(1, "Potential " + str(self.potId) + ": Leveled up to leader!\n")
+		os.write(1, "Pot " + str(self.potId) + ": Leveled up to leader!\n")
 		self.mom.subscribe(COORDINATOR_TOPIC)
 		self.t = Timer(TMR_UPDATE_RESOURCES, self._tmrLeader)
 		self.t.start()
 		while(1):
-			os.write(1, "Potential " + str(self.potId) + ": Awaiting order...\n")
+			os.write(1, "Pot " + str(self.potId) + ": Awaiting order...\n")
 			req = self.mom.receive()
 			if req[:len(MSG_DISCOVERY)] == MSG_DISCOVERY:
 				continue
+			os.write(1, "Pot " + str(self.potId) + ": Executing " + req +"\n")
+			responses = self.cnator.executeOrder(req)
+			self.cnator.printStatus()
+			self.cnator.sendResponses(responses)
 	
 	def _tmrBackup(self):
 		# If here, the leader is dead
-		os.write(1, "Potential " + str(self.potId) + ": Leader is down!\n")
+		os.write(1, "Pot " + str(self.potId) + ": Leader is down!\n")
 		self.leaderId = (self.leaderId % self.potAmount) + 1
-		os.write(1, "Potential " + str(self.potId) + ": All hail new leader: " + str(self.leaderId) + "\n")
+		os.write(1, "Pot " + str(self.potId) + ": All hail new leader: " + str(self.leaderId) + "\n")
 		#self.mom.publish(DISCOVERY_TOPIC, MSG_DISCOVERY + str(self.potId))
 		os.kill(os.getpid(), signal.SIGINT)
 	
@@ -89,15 +94,17 @@ class Potential:
 		self.mom.subscribe(RESOURCES_TOPIC)
 		while aliveLeaderId == self.leaderId:
 			try:
-				os.write(1, "Potential " + str(self.potId) + ": Waiting...\n")
-				s = self.mom.receive()
-				if s[:len(MSG_DISCOVERY)] == MSG_DISCOVERY:
+				os.write(1, "Pot " + str(self.potId) + ": Waiting...\n")
+				req = self.mom.receive()
+				if req[:len(MSG_DISCOVERY)] == MSG_DISCOVERY:
 					continue
-				os.write(1, "Potential " + str(self.potId) + ": Received " + s + "\n")
-				if s == MSG_LEADER_ALIVE:
+				os.write(1, "Pot " + str(self.potId) + ": Received " + req + "\n")
+				if req == MSG_LEADER_ALIVE:
 					self.t.cancel()
 					self.t = Timer(TMR_LEADER_ALIVE, self._tmrBackup)
 					self.t.start()
+				else:
+					self.cnator.executeOrder(req)
 			except:
 				pass
 

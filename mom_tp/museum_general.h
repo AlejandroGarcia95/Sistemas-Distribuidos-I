@@ -41,6 +41,8 @@
 
 #define COORD_TOPIC "Museum/Coordinator"
 
+#define PROXY_FILE_PY "proxy.py"
+
 #define COORD_MSG_SIZE 70
 
 void subscribe_to_coordinator(mom_t* mom, int priority);

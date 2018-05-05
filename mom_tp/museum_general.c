@@ -60,7 +60,7 @@ void subscribe_to_coordinator(mom_t* mom, int priority){
         dup2(child_pipe[0], 0);
         dup2(parent_pipe[1], 1);
         char cmd_potential[50] = {0};
-        sprintf(cmd_potential, "python potential.py %d", priority);
+        sprintf(cmd_potential, "python %s %d", PROXY_FILE_PY, priority);
 		system(cmd_potential);
         close(child_pipe[0]);
         close(parent_pipe[1]);

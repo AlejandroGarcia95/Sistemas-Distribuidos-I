@@ -7,13 +7,15 @@ from mom import *
 
 # Format of received messages:
 
-# "processId:<SHM/SEM> <ACTION> <NAME> <VALUE>"
+# "processId:<SHM/SEM> <ACTION> <NAME> <VALUE> <REQ NUMBER>"
 # Examples: "1234:SEM INIT SOMESEM 3", "1234:SHM READ SOMESHM", "1234:SEM WAIT SOMESEM"
 
 # Feasible responses:
 
 # "Coord:<INT VALUE>" (example: "8", for shmRead)
 # "Coord:<1/0>" (i.e. success, failure)
+
+COORDINATOR_TOPIC = "Museum/Coordinator/Coordinator"
 
 class Coordinator:
 	def __init__(self):
@@ -22,7 +24,7 @@ class Coordinator:
 		self.semTable = {}
 		self.shmTable = {}
 		self.mom = Mom()
-		self.mom.subscribe("Museum/Coordinator")
+		self.mom.subscribe(COORDINATOR_TOPIC)
 
 	def _shmInit(self, name, value):
 		if name in self.shmTable:

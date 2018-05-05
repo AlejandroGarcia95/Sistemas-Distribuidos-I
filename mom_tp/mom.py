@@ -160,15 +160,18 @@ class Mom:
 		return (ropc == OC_ACK_SUCCESS)
 		
 	def receive(self):
-		# Locally receive message from daemon requester
-		r, _ = self.msqResp.receive(type=self.globalId)
-		response = MomMessage()
-		response.setFromStringRepresentation(r)
-		ropc = response.getOpcode()
-		if (ropc != OC_DELIVERED):
-			print(str(os.getpid()) + ": MOM CRITICAL ON RECEIVING: Daemon has not delivered message!\n")
-			return None
-		return response.getPayload().rstrip('\x00')
+		try:
+			# Locally receive message from daemon requester
+			r, _ = self.msqResp.receive(type=self.globalId)
+			response = MomMessage()
+			response.setFromStringRepresentation(r)
+			ropc = response.getOpcode()
+			if (ropc != OC_DELIVERED):
+				print(str(os.getpid()) + ": MOM CRITICAL ON RECEIVING: Daemon has not delivered message!\n")
+				return None
+			return response.getPayload().rstrip('\x00')
+		except:
+			raise
 		
 	def subscribe(self, topic):
 		if (topic is None):

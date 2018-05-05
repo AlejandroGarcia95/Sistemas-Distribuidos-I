@@ -78,7 +78,7 @@ class Coordinator:
 				nextProc = pList.pop(0)
 				# Wakeup nextProc
 				nextProcTopic = "Museum/" + nextProc
-				responses.append( (nextProcTopic, "Coord:1") )
+				responses.append( (nextProcTopic, True) )
 			else:
 				value += 1
 			self.semTable[name] = (value, pList)
@@ -93,7 +93,7 @@ class Coordinator:
 			# Wakeup all processes
 			for proc in pList:
 				procTopic = "Museum/" + proc
-				responses.append( (procTopic, "Coord:0") )
+				responses.append( (procTopic, False) )
 			self.semTable.pop(name)
 			responses.append( (processTopic, True) )
 			return responses

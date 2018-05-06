@@ -13,8 +13,9 @@ from coordinator import *
 # ------------------------ Topics used ------------------------
 
 DISCOVERY_TOPIC = "Museum/Coordinator/Learning"
-RESOURCES_TOPIC = "Museum/Coordinator/Resources"
+BACKUPS_TOPIC = "Museum/Coordinator/Backups"
 COORDINATOR_TOPIC = "Museum/Coordinator/Coordinator"
+PROXIES_TOPIC = "Museum/Coordinator/Proxies"
 
 # -------------------------- Timers --------------------------
 
@@ -26,6 +27,7 @@ TMR_LEADER_ALIVE = 5.0
 
 MSG_LEADER_ALIVE = "LEADER IS ALIVE"
 MSG_DISCOVERY = "DIS"
+MSG_NEW_COORD_TOPIC = "NEWTOPIC "
 
 class Potential:
 	def __init__(self):
@@ -36,7 +38,10 @@ class Potential:
 		self.leaderId = 1
 		self.t = None
 		self.cnator = Coordinator(self.mom)
+		self.reqTable = {}
 
+	def _messageIsDiscovery(self, m):
+		return (m[:len(MSG_DISCOVERY)] == MSG_DISCOVERY)
 		
 	def _discoveryState(self):
 		# Subscribe to discovery topic
@@ -58,26 +63,67 @@ class Potential:
 		# If here, all potential coordinators were discovered
 		os.write(1, "Pot " + ownId + ": Ready to rock!\n")
 	
+	def _reqToProcessId(self, req):
+		return req.split()[0].split(":")[0]
+	
+	def _reqToReqNumber(self, req):
+		return req.split()[-1]
+	
+	def _getLastResponses(self, processId):
+		return self.reqTable[processId][1]
+	
+	def _addReqResponses(self, req, responses):
+		processId = self._reqToProcessId(req)
+		reqNumber = self._reqToReqNumber(req)
+		self.reqTable[processId] = (reqNumber, responses)
+	
+	def _reqIsNew(self, req):
+		processId = self._reqToProcessId(req)
+		if not processId in self.reqTable:
+			return True
+		reqNumber = self._reqToReqNumber(req)
+		if reqNumber == self.reqTable[processId][0]:
+			return False
+		return True
+	
 	def _tmrLeader(self):
-		self.mom.publish(RESOURCES_TOPIC, MSG_LEADER_ALIVE)
+		self.mom.publish(BACKUPS_TOPIC, MSG_LEADER_ALIVE)
 		self.t = Timer(TMR_UPDATE_RESOURCES, self._tmrLeader)
 		self.t.start()
 		os.write(1, "Pot " + str(self.potId) + ": Sending leader alive message\n") 
 	
 	def _leaderState(self):
 		os.write(1, "Pot " + str(self.potId) + ": Leveled up to leader!\n")
-		self.mom.subscribe(COORDINATOR_TOPIC)
+		coordTopic = COORDINATOR_TOPIC + str(self.potId)
+		self.mom.subscribe(coordTopic)
+		
+		if self.potId != 1:
+			# Tell proxies we have now another leader
+			self.mom.publish(PROXIES_TOPIC, MSG_NEW_COORD_TOPIC + coordTopic)
+
 		self.t = Timer(TMR_UPDATE_RESOURCES, self._tmrLeader)
 		self.t.start()
 		while(1):
-			os.write(1, "Pot " + str(self.potId) + ": Awaiting order...\n")
+			os.write(1, "Pot " + str(self.potId) + ": Waiting request...\n")
 			req = self.mom.receive()
-			if req[:len(MSG_DISCOVERY)] == MSG_DISCOVERY:
+			if self._messageIsDiscovery(req):
 				continue
-			os.write(1, "Pot " + str(self.potId) + ": Executing " + req +"\n")
-			responses = self.cnator.executeOrder(req)
-			self.cnator.printStatus()
-			self.cnator.sendResponses(responses)
+				
+			if self._reqIsNew(req):	
+				os.write(1, "Pot " + str(self.potId) + ": Executing new request: " + req +"\n")
+				responses = self.cnator.executeOrder(req)
+				#self.cnator.printStatus()
+				self.mom.publish(BACKUPS_TOPIC, req)
+				self.cnator.sendResponses(responses)
+				self.t.cancel()
+				self.t = Timer(TMR_UPDATE_RESOURCES, self._tmrLeader)
+				self.t.start()
+				self._addReqResponses(req, responses)
+				#os.write(1, "reqTable:" + str(self.reqTable) +"\n")
+			else:
+				os.write(1, "Pot " + str(self.potId) + ": RETRANSMITTING FOR: " + req +"\n")
+				responses = self._getLastResponses(self._reqToProcessId(req))
+				self.cnator.sendResponses(responses)
 	
 	def _tmrBackup(self):
 		# If here, the leader is dead
@@ -91,25 +137,31 @@ class Potential:
 		aliveLeaderId = self.leaderId
 		self.t = Timer(TMR_LEADER_ALIVE, self._tmrBackup)
 		self.t.start()
-		self.mom.subscribe(RESOURCES_TOPIC)
+		self.mom.subscribe(BACKUPS_TOPIC)
 		while aliveLeaderId == self.leaderId:
 			try:
 				os.write(1, "Pot " + str(self.potId) + ": Waiting...\n")
 				req = self.mom.receive()
-				if req[:len(MSG_DISCOVERY)] == MSG_DISCOVERY:
+				if self._messageIsDiscovery(req):
 					continue
+					
 				os.write(1, "Pot " + str(self.potId) + ": Received " + req + "\n")
-				if req == MSG_LEADER_ALIVE:
-					self.t.cancel()
-					self.t = Timer(TMR_LEADER_ALIVE, self._tmrBackup)
-					self.t.start()
-				else:
-					self.cnator.executeOrder(req)
+				if req != MSG_LEADER_ALIVE:
+					if self._reqIsNew(req):
+						os.write(1, "Pot " + str(self.potId) + ": Executing " + req +"\n")					
+						responses = self.cnator.executeOrder(req)
+						#self.cnator.printStatus()
+						self._addReqResponses(req, responses)
+					
+				self.t.cancel()
+				self.t = Timer(TMR_LEADER_ALIVE, self._tmrBackup)
+				self.t.start()
+				#os.write(1, "reqTable:" + str(self.reqTable) +"\n")
 			except:
 				pass
 
 		# If here, this potential is now the leader
-		self.mom.unsubscribe(RESOURCES_TOPIC)
+		self.mom.unsubscribe(BACKUPS_TOPIC)
 	
 	def potentialLoop(self):
 		while(1):

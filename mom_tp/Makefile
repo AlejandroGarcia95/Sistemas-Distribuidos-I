@@ -47,6 +47,7 @@ clean:
 	rm -f *~ *.pyc
 	rm -r -f Topics
 	rm -f inv_index.txt
+	rm -f CoordTopic.txt
 	sh ipcrma.sh
 
 valgrind: clean $(PROGRAM)

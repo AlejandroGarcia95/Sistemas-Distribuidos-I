@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 from mom import *
+import os
 
 # ------ Python Coodinator: The boss of SHM and SEM ------
 
@@ -161,19 +162,16 @@ class Coordinator:
 			if r[1] is None:
 				continue
 			elif r[1] == True:
-				print str(r) + " becomes " + str(r[0]) + " Coord:1"
 				self.mom.publish(r[0], "Coord:1")
 			elif r[1] == False:
-				print str(r) + " becomes " + str(r[0]) + " Coord:0"
 				self.mom.publish(r[0], "Coord:0")
 			else:
-				print str(r) + " becomes " + str(r[0]) + " " + str(r[1])
 				self.mom.publish(r[0], "Coord:" + str(r[1]))
 		
 	def printStatus(self):
-		print "STATUS"
-		print("SHMs: " + str(self.shmTable))
-		print("SEMs: " + str(self.semTable))
+		os.write(1, "STATUS\n")
+		os.write(1, "SHMs: " + str(self.shmTable) + "\n")
+		os.write(1, "SEMs: " + str(self.semTable) + "\n")
 		
 """		
 # Main

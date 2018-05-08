@@ -13,6 +13,7 @@
 void print_help(){
 	printf("USAGE:\n\n");
 	printf("Subscribing: S <topic>\n");
+	printf("Unsubscribing: U <topic>\n");
 	printf("Publishing: P <topic> <text>\n");
 	printf("Receiving: R\n\n");
 	printf("Exit program: E\n\n");
@@ -33,6 +34,15 @@ bool parse_command(mom_t* mom, char* buff){
 				printf("Subscribing successful!\n");
 			else
 				printf("Subscribing failed!\n");
+			return true;
+			
+		case 'u':
+		case 'U':
+			printf("Unsubscribing from topic %s...\n", &buff[2]);
+			if(mom_unsubscribe(mom, &buff[2]))
+				printf("Unsubscribing successful!\n");
+			else
+				printf("Unsubscribing failed!\n");
 			return true;
 			
 		case 'r':

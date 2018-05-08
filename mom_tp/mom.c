@@ -101,7 +101,7 @@ bool mom_publish(mom_t* mom, char* topic, const void *msg){
 
 bool mom_subscribe(mom_t* mom, char* topic){
 	if((!mom) || (!topic)) {
-		printf("%d: Invalid argument in mom_publish: NULL received\n", getpid());
+		printf("%d: Invalid argument in mom_subscribe: NULL received\n", getpid());
 		return false;
 	}
 	if(!topic_is_valid(topic))	return false;
@@ -147,4 +147,23 @@ void mom_destroy(mom_t* mom){
 	// Release shared memory nonetheless
 	free(mom);
 	// Must not destroy mom->msqids since they're mom_daemon queues
+}
+
+
+bool mom_unsubscribe(mom_t* mom, char* topic){
+	if((!mom) || (!topic)) {
+		printf("%d: Invalid argument in mom_unsubscribe: NULL received\n", getpid());
+		return false;
+	}
+	if(!topic_is_valid(topic))	return false;
+	mom_message_t m = {0}, response = {0};
+	// Write and read unsubscribe message
+	fill_message(&m, mom, OC_UNSUBSCRIBE, topic, NULL);
+	send_message_to_daemon(mom, m, &response);
+	if((response.opcode != OC_ACK_SUCCESS) && (response.opcode != OC_ACK_FAILURE)) {
+		printf("%d: MOM CRITICAL ON UNSUBSCRIBING: Daemon answer was not ACK!\n", getpid());
+		return false;
+	}
+	
+	return response.opcode == OC_ACK_SUCCESS;
 }

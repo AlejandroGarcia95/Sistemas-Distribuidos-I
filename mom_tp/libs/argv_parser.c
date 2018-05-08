@@ -144,3 +144,8 @@ bool ap_get_string(ap_t* ap, char* parm_name, char* value){
 	
 	return 0;
 }
+
+/* Creates a copy of the received ap */
+ap_t* ap_clone(ap_t* ap){
+	return ap_create_from_argv(ap->parm_amount, ap->parm_list);
+}

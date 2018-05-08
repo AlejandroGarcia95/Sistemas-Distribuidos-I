@@ -14,6 +14,7 @@
 
 #include "mom_general.h"
 #include "dbfs.h"
+#include "libs/vector.h"
 #include "libs/msq.h"
 #include "libs/argv_parser.h"
 
@@ -27,6 +28,8 @@ typedef  struct dbms_data_ {
 	int msqid_s;
 
 	int inv_index;
+	
+	vector_t* mtypes_table;
 	
 } dbms_data_t;
 
@@ -54,6 +57,7 @@ void register_user(mom_message_t* m, dbms_data_t* dd) {
 	}
 	m->global_id = dd->global_id;
 	m->opcode = OC_ACK_SUCCESS;
+	vector_set(dd->mtypes_table, dd->global_id, m->mtype);
 	dd->global_id++;
 }
 
@@ -134,7 +138,7 @@ bool deliver_message_to_subscribers(mom_message_t* m, char* topic_path, dbms_dat
 		have_to_forward &= (id != m->global_id); // Dont send messages to the sender
 		if(have_to_forward) {
 			// Really forward message
-			forwarded.mtype = id;
+			vector_get(dd->mtypes_table, id, &forwarded.mtype);
 			forwarded.local_id = id;
 			msq_send(dd->msqid_s, &forwarded, sizeof(mom_message_t));
 		}
@@ -177,6 +181,55 @@ void publish_message(mom_message_t* m, dbms_data_t* dd) {
 	m->opcode = OC_ACK_SUCCESS;
 }
 
+/* Removes user with given id from topic t. For this function to work
+ properly, offset on inv_index must be right AFTER reading that user
+ entrance on the table (i.e. must scan inv_index outside and call this
+ function after finding the desired entrance). */
+void remove_user_from_topic(long id, char* t, dbms_data_t* dd){
+	// If here, user is subscribed at topic t
+	// Hence, delete them from there
+	char subs_file[PATH_MAX] = {0};
+	topic_to_subscribers(t, subs_file);
+	int fd = lock_create(subs_file);
+	if(fd < 0) {
+		printf("%d: Error opening subscribers file %s: %d\n", getpid(), subs_file, errno);
+		return;
+	}
+	lock_acquire(fd, true);
+	// First find offset at user position
+	off_t p = find_pair_id_topic(fd, id, t);
+	if(p < 0) { // Should not happen if file system is not corrupted
+		printf("%d: Error finding %ld with topic %s in file %s: %d\n", getpid(), id, t, subs_file, errno);	
+		lock_release(fd);
+		lock_destroy(fd);
+		return;			
+	}
+	
+	if(lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR) < 0) {
+		printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);	
+		lock_release(fd);
+		lock_destroy(fd);
+		return;
+	}
+	if(lseek(fd, p, SEEK_SET) < 0) {
+		printf("%d: Error seeking in subscribers file %s: %d\n", getpid(), subs_file, errno);	
+		lock_release(fd);
+		lock_destroy(fd);
+		return;
+	}
+	
+	// Delete from subs_file and inv_index
+	if((!remove_pair_id_topic(fd)) || (!remove_pair_id_topic(dd->inv_index))) {
+		printf("%d: Error removing user %ld with topic %s: %d\n", getpid(), id, t, errno);	
+		lock_release(fd);
+		lock_destroy(fd);
+		return;
+	}
+	
+	lock_release(fd);
+	lock_destroy(fd);
+}
+
 /* Erases a user id from the system. In other words, this function
  loops over the inverted index table and removes the user id from
  every topic related to them. Sets the opcode to the prover value. */
@@ -194,57 +247,50 @@ void unregister_user(mom_message_t* m, dbms_data_t* dd) {
 		return;
 	}	
 	// Scan inverted index table
-	long id; char t[TOPIC_LENGTH];
+	long id; char t[PATH_MAX];
 	while(read_pair_id_topic(dd->inv_index, &id, t)) {
-		if(id == m->global_id) {
-			// If here, user is subscribed at topic t
-			// Hence, delete them from there
-			char subs_file[PATH_MAX] = {0};
-			topic_to_subscribers(t, subs_file);
-			int fd = lock_create(subs_file);
-			if(fd < 0) {
-				printf("%d: Error opening subscribers file %s: %d\n", getpid(), subs_file, errno);
-				continue;
-			}
-			lock_acquire(fd, true);
-			// First find offset at user position
-			off_t p = find_pair_id_topic(fd, id, t);
-			if(p < 0) { // Should not happen if file system is not corrupted
-				printf("%d: Error finding %ld with topic %s in file %s: %d\n", getpid(), id, t, subs_file, errno);	
-				lock_release(fd);
-				lock_destroy(fd);
-				continue;			
-			}
-			
-			if(lseek(dd->inv_index, -SUBS_LINE_SIZE, SEEK_CUR) < 0) {
-				printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);	
-				lock_release(fd);
-				lock_destroy(fd);
-				continue;
-			}
-			if(lseek(fd, p, SEEK_SET) < 0) {
-				printf("%d: Error seeking in subscribers file %s: %d\n", getpid(), subs_file, errno);	
-				lock_release(fd);
-				lock_destroy(fd);
-				continue;
-			}
-			
-			// Delete from subs_file and inv_index
-			if((!remove_pair_id_topic(fd)) || (!remove_pair_id_topic(dd->inv_index))) {
-				printf("%d: Error removing user %ld with topic %s: %d\n", getpid(), id, t, errno);	
-				lock_release(fd);
-				lock_destroy(fd);
-				continue;
-			}
-			
-			lock_release(fd);
-			lock_destroy(fd);
-		}
+		if(id == m->global_id) 
+			remove_user_from_topic(id, t, dd);
 	}
 	
 	// If here, no more deleting needed
 	lock_release(dd->inv_index);
 	m->opcode = OC_ACK_SUCCESS;
+}
+
+/* Unsubscribes user from a topic by deleting it from the inv_index
+ and the subscribers file. The topic file is NEVER deleted! Sets 
+ the message opcode to the proper value depending on success. */
+void unsubscribe_user(mom_message_t* m, dbms_data_t* dd) {
+	if(!user_is_registered(m, dd->global_id, true)){
+		m->opcode = OC_ACK_FAILURE;
+		return;
+	}
+	lock_acquire(dd->inv_index, true);
+	// Seek at the beginning of inv_table
+	if(lseek(dd->inv_index, 0, SEEK_SET) < 0) {
+		printf("%d: Error seeking in inverted index table: %d\n", getpid(), errno);
+		m->opcode = OC_ACK_FAILURE;
+		lock_release(dd->inv_index);
+		return;
+	}	
+	// Scan inverted index table
+	char topic_file[PATH_MAX];
+	sprintf(topic_file, "%s%s%s", TOPICS_DIR, m->topic, TOPIC_EXT);
+	long id; char t[PATH_MAX];
+	while(read_pair_id_topic(dd->inv_index, &id, t)) {
+		if((id == m->global_id) && (strcmp(t, topic_file) == 0)) {
+			remove_user_from_topic(id, t, dd);
+			// If here, user is already unsubscribed, so can return
+			lock_release(dd->inv_index);
+			m->opcode = OC_ACK_SUCCESS;
+			return;
+		}
+	}
+	
+	// If here, user was never found on inv_index
+	lock_release(dd->inv_index);
+	m->opcode = OC_ACK_FAILURE;
 }
 
 
@@ -270,19 +316,21 @@ void process_message(mom_message_t* m, dbms_data_t* dd) {
 	switch(m->opcode) {		
 		// User has subscribed
 		case OC_SUBSCRIBE:
-			m->mtype = m->global_id;
 			subscribe_user(m, dd);
+			break;
+			
+		// User has unsubscribed
+		case OC_UNSUBSCRIBE:
+			unsubscribe_user(m, dd);
 			break;
 			
 		// User has published smth
 		case OC_PUBLISH:
-			m->mtype = m->global_id;
 			publish_message(m, dd);
 			break;
 		
 		// User has destroyed mom
 		case OC_DESTROY:
-			m->mtype = m->global_id;
 			unregister_user(m, dd);
 			break;
 		
@@ -331,6 +379,12 @@ int main(int argc, char* argv[]) {
 	if((dd.inv_index < 0) || (!create_directory(TOPICS_DIR)))
 		return -1;
 	
+	dd.mtypes_table = vector_create();
+	if(!dd.mtypes_table) {
+		printf("%d: Error creating local mtypes table:%d\n", getpid(), errno);
+		exit(-1);
+	}
+	
 	// Use argv_parser to retrieve msqids
 	ap_t* ap = ap_create_from_argv(argc, argv);
 	if(!ap) {
@@ -359,6 +413,7 @@ int main(int argc, char* argv[]) {
 	
 	printf("\nClosing DBMS...\n");
 	lock_destroy(dd.inv_index);
+	vector_destroy(dd.mtypes_table);
 	return 0;
 }
 

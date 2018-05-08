@@ -60,4 +60,7 @@ bool ap_get_double(ap_t* ap, char* parm_name, double* value);
  * successful, false otherwise.*/
 bool ap_get_string(ap_t* ap, char* parm_name, char* value);
 
+/* Creates a copy of the received ap */
+ap_t* ap_clone(ap_t* ap);
+
 #endif

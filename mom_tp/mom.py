@@ -20,12 +20,14 @@ OC_ACK_FAILURE = 6
 OC_DELIVERED = 7
 OC_SEPPUKU = 8
 OC_UNSUBSCRIBE = 9
+OC_RECEIVE = 10
 
 PAYLOAD_SIZE = 255
 TOPIC_LENGTH = 100
 
 QUEUE_RESPONSER = "queue_resp.temp"
 QUEUE_REQUESTER = "queue_req.temp"
+QUEUE_FORWARDER = "queue_forw.temp"
 
 MSQ_MAGIC_INT = 11	# For ftok
 
@@ -98,8 +100,10 @@ class Mom:
 		# Retrieve msqs
 		keyReq = sv.ftok(QUEUE_REQUESTER, MSQ_MAGIC_INT, True)
 		keyResp = sv.ftok(QUEUE_RESPONSER, MSQ_MAGIC_INT, True)
+		keyForw = sv.ftok(QUEUE_FORWARDER, MSQ_MAGIC_INT, True)
 		self.msqReq = sv.MessageQueue(keyReq, flags=sv.IPC_CREAT, mode=0644)
 		self.msqResp = sv.MessageQueue(keyResp, flags=sv.IPC_CREAT, mode=0644)
+		self.msqForw = sv.MessageQueue(keyForw, flags=sv.IPC_CREAT, mode=0644)
 		
 		# Retrieve globalId
 		m = MomMessage(self.localId, self.globalId, OC_CREATE)
@@ -161,6 +165,8 @@ class Mom:
 		
 	def receive(self):
 		try:
+			m = MomMessage(self.localId, self.globalId, OC_RECEIVE)
+			self.msqForw.send(m.getStringRepresentation(), type=self.localId)
 			# Locally receive message from daemon requester
 			r, _ = self.msqResp.receive(type=self.globalId)
 			response = MomMessage()

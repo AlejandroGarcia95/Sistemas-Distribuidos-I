@@ -11,6 +11,7 @@ typedef struct mom_ {
 	long global_id;
 	int msqid_requester;
 	int msqid_responser;
+	int msqid_forwarder;
 } mom_t;
 
 

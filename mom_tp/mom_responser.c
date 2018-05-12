@@ -13,6 +13,7 @@
 
 #define ATTEMPTS_RECEIVING 10
 
+
 bool keep_looping = true;
 
 void handler(int signum) {
@@ -36,8 +37,9 @@ int main(int argc, char* argv[]){
 		exit(-1);
 	}
 	
-	int msqid, socket_fd;
+	int msqid, socket_fd, msqid_forwarder;
 	ap_get_int(ap, QUEUE_RESPONSER, &msqid);	
+	ap_get_int(ap, QUEUE_FORWARDER, &msqid_forwarder);
 	ap_get_int(ap, SOCKET_FD, &socket_fd);
 	
 	socket_t* s = socket_create_from_fd(socket_fd, SOCK_ACTIVE);
@@ -72,11 +74,14 @@ int main(int argc, char* argv[]){
 		printf("Responser received a message from broker!\n");
 		print_message(m);
 		m.mtype = m.local_id;
-		msq_send(msqid, &m, sizeof(mom_message_t));
+		if(m.opcode == OC_DELIVERED) 
+			msq_send(msqid_forwarder, &m, sizeof(mom_message_t));
+		else 
+			msq_send(msqid, &m, sizeof(mom_message_t));
 	}
 	
-	printf("\nClosing mom_responser...\n");
 	socket_destroy(s);
 	ap_destroy(ap);
+	printf("\nClosing mom_responser...\n");
 	exit(0);
 }

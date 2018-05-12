@@ -5,7 +5,7 @@ LIBS_C = $(wildcard $(LIBS_PATH)/*.c)
 LIBS_O = $(patsubst $(LIBS_PATH)/%.c, $(LIBS_PATH)/%.o, $(LIBS_C))
 MOM_API = mom.o
 PROGRAM = user_main
-DAEMON_PROCESSES = mom_responser mom_requester
+DAEMON_PROCESSES = mom_responser mom_requester mom_forwarder
 MOM_DAEMON = mom_daemon
 BROKER_PROCESSES = dbms broker_handler broker_sender
 BROKER = broker_server
@@ -51,12 +51,14 @@ topiclean:
 	rm -r -f Topics
 	rm -f inv_index.txt
 	rm -f CoordTopic.txt
+	rm -f *.dat
 
 clean:
 	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(BROKER) $(BROKER_PROCESSES) $(MUSEUM) $(MUSEUM_PROCESSES) $(PHILO)
 	rm -f $(LIBS_O)
 	rm -f *~ *.pyc
 	rm -r -f Topics
+	rm -f *.dat
 	rm -f inv_index.txt
 	rm -f CoordTopic.txt
 	sh ipcrma.sh

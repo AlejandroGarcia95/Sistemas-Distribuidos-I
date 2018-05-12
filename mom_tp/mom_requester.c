@@ -65,8 +65,8 @@ int main(int argc, char* argv[]){
 	m.opcode = OC_SEPPUKU;
 	SOCKET_S(s, mom_message_t, m);
 	
-	printf("\nClosing mom_requester...\n");
 	socket_destroy(s);
 	ap_destroy(ap);
+	printf("\nClosing mom_requester...\n");
 	exit(0);
 }

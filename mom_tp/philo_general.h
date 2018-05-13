@@ -8,9 +8,9 @@
 
 #include "mom.h"
 
-#define PHILO_AMOUNT 40 // Odd value
+#define PHILO_AMOUNT 30 // Odd value
 
-#define ITEMS 8
+#define ITEMS 6
 
 
 // Comunication with coordinator of dshm and dsem

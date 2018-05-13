@@ -10,7 +10,7 @@ import time
 
 # Must be called as "python new_coordinator.py <cId> <cAmount>"
 
-REDUNDANCY = 2
+REDUNDANCY = 1
 
 # ------------------------ Topics used ------------------------
 
@@ -103,7 +103,7 @@ class ResourcesDB:
 			value, pList = self.semTable[name]
 			if len(pList) > 0:
 				if value > 0:
-					print "SOMETHING WENT TERRIBLY WRONG: SEM HASNT PROPERLY WAIT"
+					os.write(1, "SOMETHING WENT TERRIBLY WRONG: SEM HASNT PROPERLY WAIT\n") 
 				nextProc = pList.pop(0)
 				# Wakeup nextProc
 				nextProcTopic = "Philo/" + nextProc
@@ -180,7 +180,7 @@ class ResourcesDB:
 		
 	def executeOrder(self, order):
 		if len(order) <= 5:
-			return
+			return []
 		processTopic = "Philo/" + order.split()[0].split(":")[0]
 		return self._processOrder(order, processTopic)
 		
@@ -209,14 +209,13 @@ class Coordinator:
 		self.cAmount = int(sys.argv[2])
 		self.mom = Mom()
 		self.aliveCoords = {}
-		self._log("Coord up! Entering discovery mode...")
-		self._discoveryState()
-		#for r in range(0, REDUNDANCY):
-		#	self.mom.subscribe(COORDINATOR_TOPIC + str((self.cId + r) % self.cAmount))
 		self.aliveTmr = None
 		self.t = None
 		self.db = ResourcesDB(self.mom)
 		self.reqTable = {}
+		self._log("Coord up! Entering discovery mode...")
+		self._discoveryState()
+
 		
 
 	def _updateAliveTable(self, coordId):
@@ -265,7 +264,10 @@ class Coordinator:
 			except:
 				break
 		
-		self._log("Discovery finished!")
+		try:
+			self._log("Discovery finished!")
+		except:
+			pass
 	
 	def _reqToProcessId(self, req):
 		return req.split()[0].split(":")[0]
@@ -289,40 +291,6 @@ class Coordinator:
 		if reqNumber == self.reqTable[processId][0]:
 			return False
 		return True
-
-	
-	def _leaderState(self):
-		os.write(1, "Pot " + str(self.potId) + ": Leveled up to leader!\n")
-		coordTopic = COORDINATOR_TOPIC + str(self.potId)
-		self.mom.subscribe(coordTopic)
-		
-		if self.potId != 1:
-			# Tell proxies we have now another leader
-			self.mom.publish(PROXIES_TOPIC, MSG_NEW_COORD_TOPIC + coordTopic)
-
-		self.t = Timer(TMR_UPDATE_RESOURCES, self._tmrLeader)
-		self.t.start()
-		while(1):
-			os.write(1, "Pot " + str(self.potId) + ": Waiting request...\n")
-			req = self.mom.receive()
-			if self._messageIsDiscovery(req):
-				continue
-				
-			if self._reqIsNew(req):	
-				os.write(1, "Pot " + str(self.potId) + ": Executing new request: " + req +"\n")
-				responses = self.cnator.executeOrder(req)
-				#self.cnator.printStatus()
-				self.mom.publish(BACKUPS_TOPIC, req)
-				self.cnator.sendResponses(responses)
-				self.t.cancel()
-				self.t = Timer(TMR_UPDATE_RESOURCES, self._tmrLeader)
-				self.t.start()
-				self._addReqResponses(req, responses)
-				#os.write(1, "reqTable:" + str(self.reqTable) +"\n")
-			else:
-				os.write(1, "Pot " + str(self.potId) + ": RETRANSMITTING FOR: " + req +"\n")
-				responses = self._getLastResponses(self._reqToProcessId(req))
-				self.cnator.sendResponses(responses)
 	
 	def _tmrBackup(self):
 		# If here, the leader is dead
@@ -332,36 +300,6 @@ class Coordinator:
 		#self.mom.publish(DISCOVERY_TOPIC, MSG_DISCOVERY + str(self.potId))
 		os.kill(os.getpid(), signal.SIGINT)
 	
-	def _backupState(self):
-		aliveLeaderId = self.leaderId
-		self.t = Timer(TMR_LEADER_ALIVE, self._tmrBackup)
-		self.t.start()
-		self.mom.subscribe(BACKUPS_TOPIC)
-		while aliveLeaderId == self.leaderId:
-			try:
-				os.write(1, "Pot " + str(self.potId) + ": Waiting...\n")
-				req = self.mom.receive()
-				if self._messageIsDiscovery(req):
-					continue
-					
-				os.write(1, "Pot " + str(self.potId) + ": Received " + req + "\n")
-				if req != MSG_LEADER_ALIVE:
-					if self._reqIsNew(req):
-						os.write(1, "Pot " + str(self.potId) + ": Executing " + req +"\n")					
-						responses = self.cnator.executeOrder(req)
-						#self.cnator.printStatus()
-						self._addReqResponses(req, responses)
-					
-				self.t.cancel()
-				self.t = Timer(TMR_LEADER_ALIVE, self._tmrBackup)
-				self.t.start()
-				#os.write(1, "reqTable:" + str(self.reqTable) +"\n")
-			except:
-				pass
-
-		# If here, this potential is now the leader
-		self.mom.unsubscribe(BACKUPS_TOPIC)
-	
 	def _tmrDefunct(self):
 		# If here, one coordinator has died
 		now = time.time()
@@ -369,11 +307,11 @@ class Coordinator:
 		for coordId in self.aliveCoords:
 			if (now - self.aliveCoords[coordId]) > TMR_DEFUNCT:
 				self._log("Coordinator " + str(coordId) + " has died!")
-				self._log("Remaining are " + str(self.aliveCoords.keys()))
 			else:
 				aliveOnes[coordId] = self.aliveCoords[coordId]
 		
 		self.aliveCoords = aliveOnes
+		self._log("Remaining are " + str(self.aliveCoords.keys()))
 		self._launchDefunctTmr()
 	
 	def _launchDefunctTmr(self):
@@ -388,9 +326,58 @@ class Coordinator:
 			self.t = Timer(max(TMR_DEFUNCT - elapsed, 0), self._tmrDefunct)
 			self.t.start()
 	
+	def _coordIdToTopicId(self, coordId):
+		topics = []
+		for r in range(0, REDUNDANCY + 1):
+			topicId = (coordId + r) % self.cAmount
+			if topicId == 0:
+				topicId = self.cAmount
+			topics.append(topicId)
+		return topics	
+		
+	def _topicIdToCoordId(self, topicId):
+		coords = []
+		for r in range(0, REDUNDANCY + 1):
+			coordId = (topicId - r) % self.cAmount
+			if coordId == 0:
+				coordId = self.cAmount
+			coords.append(coordId)
+		return coords
+	
+	# "processId:<SHM/SEM> <ACTION> <NAME> <VALUE> <REQ NUMBER>"
+	# Works hashing the <NAME> field, returns -1 on error
+	def _hashRequest(self, req):
+		lReq = req.split()
+		if len(lReq) < 3:
+			return -1
+		name = lReq[2].rstrip('\x00').upper()
+		return ((hash(name) % self.cAmount) + 1)
+	
+	def _resourceIsMine(self, req):
+		topicId = self._hashRequest(req)
+		if topicId < 0:
+			return False
+		myTopics = self._coordIdToTopicId(self.cId)
+		return (topicId in myTopics)
+	
+	def _haveToSendResponse(self, req):
+		topicId = self._hashRequest(req)
+		if topicId < 0:
+			return False
+		# Retrieve all coordinators related to that resource
+		coords = self._topicIdToCoordId(topicId)
+		if not self.cId in coords:
+			return False
+		# If here, I have to answer if I'm the biggest alive
+		livingCoords = self.aliveCoords.keys()
+		livingCoords.append(self.cId)
+		coordsForRes = [c for c in coords if c in livingCoords]
+		return (self.cId == max(coordsForRes))
 	
 	def coordLoop(self):
 		self._launchDefunctTmr()
+		# Subscribe to coordinator topic
+		self.mom.subscribe(COORDINATOR_TOPIC)
 		while(1):
 			try:
 				self._log("Waiting...")
@@ -399,14 +386,28 @@ class Coordinator:
 					coordId = int(req.split(":")[-1])
 					self._updateAliveTable(coordId)
 					self._log("Coordinator with id " + str(coordId) + " appeared")
-					
-				if self._messageIsKeepAlive(req):
+				
+				elif self._messageIsKeepAlive(req):
 					coordId = int(req.split(":")[-1])
 					self._updateAliveTable(coordId)
 					self._launchDefunctTmr()
+				
+				else: # Request		
+					if self._resourceIsMine(req):
+						if self._reqIsNew(req):
+							self._log("Executing new request: " + req)
+							responses = self.db.executeOrder(req)
+							self.db.printStatus()
+							if self._haveToSendResponse(req):
+								self.db.sendResponses(responses)
+							self._addReqResponses(req, responses)
+						elif self._haveToSendResponse(req):
+							self._log("RETRANSMITTING FOR " + req)
+							responses = self._getLastResponses(self._reqToProcessId(req))
+							self.db.sendResponses(responses)
 					
 			except:
-				pass
+				break
 
 
 p = Coordinator()

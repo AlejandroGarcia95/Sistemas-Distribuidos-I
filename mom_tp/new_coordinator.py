@@ -17,19 +17,24 @@ REDUNDANCY = 1
 ALIVE_TOPIC = "Philo/Coordinator/Alive"
 COORDINATOR_TOPIC = "Philo/Coordinator/Coordinator"
 PROXIES_TOPIC = "Philo/Coordinator/Proxies"
+LEARN_TOPIC = "Philo/Coordinator/Learning"
 
 # -------------------------- Timers --------------------------
 
-TMR_DISCOVERY = 20.0
-TMR_KEEPALIVE = 3.0
-TMR_DEFUNCT = 8.5
+TMR_DISCOVERY = 14.0
+TMR_KEEPALIVE = 5.0
+TMR_DEFUNCT = 12.5
 
 # ------------------------- Messages -------------------------
 
 MSG_KEEPALIVE = "ALIVE"
 MSG_DISCOVERY = "DIS"
 MSG_NEW_COORD_TOPIC = "NEWTOPIC "
+MSG_RESOURCE = "RES"
+MSG_REQTABLE = "REQ"
+MSG_RES_SEP = "#"
 
+MSG_RES_SIZE = 200
 
 # -------------------------------------------------------------
 
@@ -195,6 +200,19 @@ class ResourcesDB:
 				self.mom.publish(r[0], "Coord:0")
 			else:
 				self.mom.publish(r[0], "Coord:" + str(r[1]))
+	
+	def imposeSem(self, semName, semValue, semProcessList):
+		self.semTable[semName] = (semValue, semProcessList)
+	
+	def imposeShm(self, shmName, shmValue):
+		self.shmTable[shmName] = shmValue
+	
+	
+	def getSemTable(self):
+		return self.semTable
+	
+	def getShmTable(self):
+		return self.shmTable
 		
 	def printStatus(self):
 		os.write(1, "STATUS\n")
@@ -215,8 +233,7 @@ class Coordinator:
 		self.reqTable = {}
 		self._log("Coord up! Entering discovery mode...")
 		self._discoveryState()
-
-		
+		self.mom.unsubscribe(LEARN_TOPIC + str(self.cId))
 
 	def _updateAliveTable(self, coordId):
 		if coordId > self.cAmount:
@@ -232,6 +249,12 @@ class Coordinator:
 	
 	def _messageIsKeepAlive(self, m):
 		return (m[:len(MSG_KEEPALIVE)] == MSG_KEEPALIVE)
+	
+	def _messageIsResources(self, m):
+		return (m[:len(MSG_RESOURCE)] == MSG_RESOURCE)
+			
+	def _messageIsReqTable(self, m):
+		return (m[:len(MSG_REQTABLE)] == MSG_REQTABLE)
 		
 	def _tmrDiscovery(self):
 		# If here, I've ended my discovery time
@@ -243,13 +266,63 @@ class Coordinator:
 		self.aliveTmr = Timer(TMR_KEEPALIVE, self._tmrKeepAlive)
 		self.aliveTmr.start()
 	
+	def _parseResources(self, msg):
+		resList = msg.split(MSG_RES_SEP)
+		for _res in resList:
+			thisRes = _res.split(" ")
+			if len(thisRes) < 3:
+				continue
+			resName = thisRes[1]
+			resValue = int(thisRes[2])
+			if thisRes[0].split(":")[1] == "SEM":
+				processList = []
+				for i in range(3, len(thisRes)):
+					processList.append(thisRes[i])
+				self.db.imposeSem(resName, resValue, processList)
+			elif thisRes[0].split(":")[1] == "SHM":
+				self.db.imposeShm(resName, resValue)
+		self.db.printStatus()
+	
+	def _parseReqTable(self, msg):
+		self._log("Here1 with " + msg)
+		lastRespList = msg.split(MSG_RES_SEP)
+		for _resp in lastRespList:
+			self._log("Here2 with " + _resp)
+			thisRes = _resp.split(" ")
+			if len(thisRes) < 3:
+				continue
+			reqNumber = thisRes[1]
+			processId = thisRes[0].split(":")[1]
+			self._log("Here3 with " + processId + " " + reqNumber)
+			# Loop response list
+			responses = []
+			for i in range(2, len(thisRes), 2):
+				aux = thisRes[i + 1]
+				if aux == "None":
+					aux = None
+				elif aux == "True": 
+					aux = True
+				elif aux == "False": 
+					aux = False
+				responses.append( (thisRes[i], aux) )
+			
+			if not processId in self.reqTable:
+				self.reqTable[processId] = (reqNumber, responses)
+			elif int(self.reqTable[processId][0]) < int(reqNumber):
+				self.reqTable[processId] = (reqNumber, responses)
+				
+		self._log("ReqTable: " + str(self.reqTable))
+	
 	def _discoveryState(self):
-		self.mom.publish(ALIVE_TOPIC, MSG_DISCOVERY + ":" + str(self.cId))
-		# Subscribe to keepalive topic
+		# Subscribe to keepalive and learning topic
 		self.mom.subscribe(ALIVE_TOPIC)
+		self.mom.subscribe(LEARN_TOPIC + str(self.cId))
+		# Anounce I'm here and learning
+		self.mom.publish(ALIVE_TOPIC, MSG_DISCOVERY + ":" + str(self.cId))
 		self.aliveTmr = Timer(TMR_KEEPALIVE, self._tmrKeepAlive)
 		self.aliveTmr.start()
 		# Lauch discovery timer
+		startime = time.time()
 		self.t = Timer(TMR_DISCOVERY, self._tmrDiscovery)
 		self.t.start()
 		
@@ -260,8 +333,18 @@ class Coordinator:
 					coordId = int(req.split(":")[-1])
 					self._updateAliveTable(coordId)
 					self._log("Discovered " + str(self.aliveCoords.keys()))
+				
+				elif self._messageIsResources(req):
+					self._parseResources(req)
+				elif self._messageIsReqTable(req):
+					self._parseReqTable(req)
+					
+				now = time.time()
+				self._log("Elapsed: " + str(now - startime))
 					
 			except:
+				now = time.time()
+				self._log("Hey, elapsed time was " + str(now - startime))
 				break
 		
 		try:
@@ -344,14 +427,17 @@ class Coordinator:
 			coords.append(coordId)
 		return coords
 	
+	def _hashResName(self, resName):
+		return ((hash(resName) % self.cAmount) + 1)
+	
 	# "processId:<SHM/SEM> <ACTION> <NAME> <VALUE> <REQ NUMBER>"
 	# Works hashing the <NAME> field, returns -1 on error
 	def _hashRequest(self, req):
 		lReq = req.split()
 		if len(lReq) < 3:
 			return -1
-		name = lReq[2].rstrip('\x00').upper()
-		return ((hash(name) % self.cAmount) + 1)
+		resName = lReq[2].rstrip('\x00').upper()
+		return self._hashResName(resName)
 	
 	def _resourceIsMine(self, req):
 		topicId = self._hashRequest(req)
@@ -359,6 +445,75 @@ class Coordinator:
 			return False
 		myTopics = self._coordIdToTopicId(self.cId)
 		return (topicId in myTopics)
+	
+	def _semToStr(self, semName, semTuple):
+		semStr = MSG_RESOURCE + ":SEM " + semName + " "
+		semStr = semStr + str(semTuple[0]) 
+		for processId in semTuple[1]:
+			semStr = semStr + " " + str(processId)
+		return semStr
+	
+	def _shmToStr(self, shmName, shmValue):
+		shmStr = MSG_RESOURCE + ":SHM " + shmName + " "
+		shmStr = shmStr + str(shmValue)
+		return shmStr
+	
+	def _lastReqToStr(self, processId, reqNumber, responses):
+		lastReqStr = MSG_REQTABLE + ":" + str(processId) + " "
+		lastReqStr = lastReqStr + str(reqNumber) 
+		for r in responses:
+			lastReqStr = lastReqStr + " " + str(r[0]) + " " + str(r[1])
+		return lastReqStr
+	
+	def _sendResToNewCoord(self, coordId):
+		topics = self._coordIdToTopicId(coordId)
+		self._log("Coord " + str(coordId) + " topics: " + str(topics))
+		# First send sems
+		semTable = self.db.getSemTable()
+		payload = ""
+		for sk in semTable:
+			if self._hashResName(sk) in topics:	
+				semStr = self._semToStr(sk, semTable[sk])
+				if (len(payload) + len(semStr)) > MSG_RES_SIZE:
+					self.mom.publish(LEARN_TOPIC + str(coordId), payload)
+					self._log("Sending " + payload)
+					payload = semStr + MSG_RES_SEP
+				else:
+					payload = payload + semStr + MSG_RES_SEP 
+					
+		if len(payload) > 1:
+			self.mom.publish(LEARN_TOPIC + str(coordId), payload)
+			self._log("Sending " + payload)
+		
+		# Then send shms	
+		payload = ""
+		shmTable = self.db.getShmTable()
+		for sk in shmTable:
+			if self._hashResName(sk) in topics:
+				shmStr = self._shmToStr(sk, shmTable[sk])
+				if (len(payload) + len(shmStr)) > MSG_RES_SIZE:
+					self.mom.publish(LEARN_TOPIC + str(coordId), payload)
+					self._log("Sending " + payload)
+					payload = shmStr + MSG_RES_SEP
+				else:
+					payload = payload + shmStr + MSG_RES_SEP
+					
+		if len(payload) > 1:
+			self.mom.publish(LEARN_TOPIC + str(coordId), payload)
+			self._log("Sending " + payload)
+		# Finally send reqTable
+		payload = ""
+		for pId in self.reqTable:
+			lastReqStr = self._lastReqToStr(pId, self.reqTable[pId][0], self.reqTable[pId][1])
+			if (len(payload) + len(lastReqStr)) > MSG_RES_SIZE:
+				self.mom.publish(LEARN_TOPIC + str(coordId), payload)
+				self._log("Sending " + payload)
+				payload = lastReqStr + MSG_RES_SEP
+			else:
+				payload = payload + lastReqStr + MSG_RES_SEP
+		if len(payload) > 1:
+			self.mom.publish(LEARN_TOPIC + str(coordId), payload)
+			self._log("Sending " + payload)			
 	
 	def _haveToSendResponse(self, req):
 		topicId = self._hashRequest(req)
@@ -384,6 +539,7 @@ class Coordinator:
 				req = self.mom.receive()
 				if self._messageIsDiscovery(req):
 					coordId = int(req.split(":")[-1])
+					self._sendResToNewCoord(coordId)
 					self._updateAliveTable(coordId)
 					self._log("Coordinator with id " + str(coordId) + " appeared")
 				
@@ -391,6 +547,12 @@ class Coordinator:
 					coordId = int(req.split(":")[-1])
 					self._updateAliveTable(coordId)
 					self._launchDefunctTmr()
+				
+				elif self._messageIsResources(req):
+					self._log("Resources shouldnt be here!")
+					
+				elif self._messageIsReqTable(req):
+					self._log("ReqTable shouldnt be here!")
 				
 				else: # Request		
 					if self._resourceIsMine(req):
@@ -404,6 +566,7 @@ class Coordinator:
 						elif self._haveToSendResponse(req):
 							self._log("RETRANSMITTING FOR " + req)
 							responses = self._getLastResponses(self._reqToProcessId(req))
+							self._log("RESPONSES ARE: " + str(responses))
 							self.db.sendResponses(responses)
 					
 			except:

@@ -6,6 +6,7 @@
 
 #define QUEUE_REQUESTER "queue_req.temp"
 #define QUEUE_RESPONSER "queue_resp.temp"
+#define QUEUE_FORWARDER "queue_forw.temp"
 
 
 #define QUEUE_HANDLER "queue_handler.temp"
@@ -28,7 +29,8 @@ typedef enum opcode_ {
 	OC_ACK_FAILURE = 6,
 	OC_DELIVERED = 7, // Used by broker when sending message to all subscribers on topic
 	OC_SEPPUKU = 8, // Used by mom_daemon to tell handler to gracefully die
-	OC_UNSUBSCRIBE = 9
+	OC_UNSUBSCRIBE = 9,
+	OC_RECEIVE = 10 // To be send to forwarder
 	} opcode_t;
 	
 
@@ -50,7 +52,7 @@ typedef  struct mom_message_ {
 // Debug purposes only
 void print_message(mom_message_t m){
 	char* oc_str[] = 	{"", "CREATE", "DESTROY", "PUBLISH", "SUBSCRIBE", "ACK_SUCCESS", 
-						"ACK_FAILURE", "DELIVERED", "SEPPUKU", "UNSUBSCRIBE"};
+						"ACK_FAILURE", "DELIVERED", "SEPPUKU", "UNSUBSCRIBE", "RECEIVE"};
 	printf("---------------------------------------------------\n");
 	printf("LOCAL ID: %ld\n", m.local_id);
 	printf("GLOBAL ID: %ld\n", m.global_id);

@@ -62,6 +62,7 @@ mom_t* mom_create(){
 	// Retrieve dameon queues' ids
 	mom->msqid_requester = msq_create(QUEUE_REQUESTER);
 	mom->msqid_responser = msq_create(QUEUE_RESPONSER);
+	mom->msqid_forwarder = msq_create(QUEUE_FORWARDER);
 	// Write and read create message to retrieve mom->global_id
 	mom_message_t m = {0}, response = {0};
 	fill_message(&m, mom, OC_CREATE, NULL, NULL);
@@ -122,6 +123,9 @@ bool mom_receive(mom_t* mom, void* msg){
 		printf("%d: Invalid argument in mom_publish: NULL received\n", getpid());
 		return false;
 	}
+	mom_message_t m = {0};
+	fill_message(&m, mom, OC_RECEIVE, NULL, NULL);
+	msq_send(mom->msqid_forwarder, &m, sizeof(mom_message_t));
 	// Locally receive message from daemon requester
 	mom_message_t response = {0};
 	msq_rcv(mom->msqid_responser, &response, sizeof(mom_message_t), mom->global_id);

@@ -5,17 +5,20 @@ LIBS_C = $(wildcard $(LIBS_PATH)/*.c)
 LIBS_O = $(patsubst $(LIBS_PATH)/%.c, $(LIBS_PATH)/%.o, $(LIBS_C))
 MOM_API = mom.o
 PROGRAM = user_main
-DAEMON_PROCESSES = mom_responser mom_requester
+DAEMON_PROCESSES = mom_responser mom_requester mom_forwarder
 MOM_DAEMON = mom_daemon
 BROKER_PROCESSES = dbms broker_handler broker_sender
 BROKER = broker_server
 MUSEUM_API = museum_general.o
 MUSEUM = museum_main
 MUSEUM_PROCESSES = museum_door museum_person museum_guide museum_tour_timeout
+PHILO_API = philo_general.o
+PHILO = philo_main philosopher
+
 
 # ----------------------------------------------------------------------
 
-all: clean $(PROGRAM) $(MOM_DAEMON) $(BROKER) $(MUSEUM)
+all: clean $(PROGRAM) $(MOM_DAEMON) $(BROKER) $(MUSEUM) $(PHILO)
 
 
 $(PROGRAM): $(LIBS_O) $(MOM_API) $(PROGRAM).c
@@ -25,6 +28,9 @@ $(PROGRAM): $(LIBS_O) $(MOM_API) $(PROGRAM).c
 $(MUSEUM): $(LIBS_O) $(MUSEUM).c $(MUSEUM_PROCESSES:=.c) $(MOM_API) $(MUSEUM_API)
 	for i in $(MUSEUM_PROCESSES) ; do gcc $(CFLAGS) -o $$i $$i.c $(LIBS_O) $(MOM_API) $(MUSEUM_API); done
 	gcc $(CFLAGS) -o $(MUSEUM) $(LIBS_O) $(MOM_API) $(MUSEUM_API) $(MUSEUM).c
+
+$(PHILO): $(LIBS_O) $(PHILO).c $(MOM_API) $(PHILO_API)
+	for i in $(PHILO) ; do gcc $(CFLAGS) -o $$i $$i.c $(LIBS_O) $(MOM_API) $(PHILO_API); done
 
 $(BROKER): $(LIBS_O) $(BROKER).c $(BROKER_PROCESSES:=.c)
 	for i in $(BROKER_PROCESSES) ; do gcc $(CFLAGS) -o $$i $$i.c $(LIBS_O) ; done
@@ -41,11 +47,18 @@ run: clean $(PROGRAM) $(DAEMON_PROCESSES) $(MOM_DAEMON)
 %.o: %.c
 	gcc $(CFLAGS) -c $< -o $@ 
 
+topiclean:
+	rm -r -f Topics
+	rm -f inv_index.txt
+	rm -f CoordTopic.txt
+	rm -f *.dat
+
 clean:
-	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(BROKER) $(BROKER_PROCESSES) $(MUSEUM) $(MUSEUM_PROCESSES)
+	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(BROKER) $(BROKER_PROCESSES) $(MUSEUM) $(MUSEUM_PROCESSES) $(PHILO)
 	rm -f $(LIBS_O)
 	rm -f *~ *.pyc
 	rm -r -f Topics
+	rm -f *.dat
 	rm -f inv_index.txt
 	rm -f CoordTopic.txt
 	sh ipcrma.sh

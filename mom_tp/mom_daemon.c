@@ -15,6 +15,9 @@
 #include "libs/socket.h"
 #include "libs/argv_parser.h"
 
+char* broker_ip = NULL;
+char* broker_port = NULL;
+
 /* Creates a temporal file with a given file_name. */
 void create_temporal(char* file_name){
 	if(mknod(file_name, S_IFREG|0666, 0) < 0) {
@@ -78,7 +81,7 @@ bool allocate_resources(ap_t** ap_requester, ap_t** ap_responser,  ap_t** ap_for
 		exit(-1); 
 	}
 	
-	socket_conect(*s, SERVER_IP, SERVER_PORT);
+	socket_conect(*s, broker_ip, broker_port);
 	printf("Connection established with broker\n");
 	int socket_fd = socket_get_fd(*s);
 	ap_set_int(*ap_requester, SOCKET_FD, socket_fd);
@@ -117,7 +120,21 @@ void ignore_sigint() {
 	sigprocmask(SIG_SETMASK, &sigset, NULL);
 }
 
+void print_help(){
+	printf("USAGE:\n");
+	printf("./mom_daemon BROKER_IP BROKER_PORT\n");
+}
+
 int main(int argc, char* argv[]) {
+	if(argc < 3) {
+		printf("ERROR READING PARAMETERS\n");
+		print_help();
+		return -1;
+	}
+	
+	broker_ip = argv[1];
+	broker_port = argv[2];
+	
 	// Allocate resources
 	ap_t* ap_requester = NULL;
 	ap_t* ap_responser = NULL;

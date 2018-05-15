@@ -53,6 +53,12 @@ topiclean:
 	rm -f CoordTopic.txt
 	rm -f *.dat
 
+run_broker: $(BROKER)
+	./$(BROKER) 127.0.0.1 8080
+
+run_daemon: $(MOM_DAEMON)
+	./$(MOM_DAEMON) 127.0.0.1 8080
+
 clean:
 	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(BROKER) $(BROKER_PROCESSES) $(MUSEUM) $(MUSEUM_PROCESSES) $(PHILO)
 	rm -f $(LIBS_O)

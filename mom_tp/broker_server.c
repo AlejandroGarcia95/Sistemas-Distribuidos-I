@@ -20,6 +20,8 @@
  * lest we take ourselves too seriously. */
  
 bool keep_looping = true;
+char* broker_ip = NULL;
+char* broker_port = NULL;
 
 void handler(int signum) {
   keep_looping = false;
@@ -91,7 +93,7 @@ bool allocate_resources(ap_t** ap_handler, socket_t** s) {
 		return false; 
 	}
 	
-	socket_bind(*s, SERVER_IP, SERVER_PORT);
+	socket_bind(*s, broker_ip, broker_port);
 	socket_listen(*s, 0);
 	
 	return true;
@@ -137,7 +139,22 @@ bool launch_handler(ap_t* ap_handler, socket_t* s){
 	return true;
 }
 
+
+void print_help(){
+	printf("USAGE:\n");
+	printf("./broker_server BROKER_IP BROKER_PORT\n");
+}
+
 int main(int argc, char* argv[]){
+	if(argc < 3) {
+		printf("ERROR READING PARAMETERS\n");
+		print_help();
+		return -1;
+	}
+	
+	broker_ip = argv[1];
+	broker_port = argv[2];
+	
 	// Set handler for graceful quit
 	set_handler();
 	ap_t* ap_handler = NULL;
@@ -149,7 +166,6 @@ int main(int argc, char* argv[]){
 	int children_amount = 1;
 	keep_looping = true;
 	printf("Broker server is up!\n");
-	
 	
 	
 	while(keep_looping){

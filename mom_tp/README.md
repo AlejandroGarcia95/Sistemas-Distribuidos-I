@@ -1,4 +1,4 @@
-# MOM TP for Sistemas Distribuidos I (FIUBA)
+# MOM TP1 for Sistemas Distribuidos I (FIUBA)
 
 ## Compiling
 

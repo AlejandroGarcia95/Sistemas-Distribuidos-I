@@ -11,7 +11,7 @@
 - _mom_requester_ and _mom_responser_: This pair, automatically launched by the _mom_daemon_ on the user's machines, are in charge of sending requests to and receiving responses from the broker. 
 - _mom_forwarder_: This process receives from _mom_responser_ all those messages intended to be delivered after some user performs a _publish_ call (i.e. messages that should be received when calling _receive_, not the broker ACKs), and persists them. As such, when a user process performs a _receive_ call, this process gets notificated and pushes the correct message in the System V queue, _preventing it from getting full_ . Added on my own because I saw it was good.
 
-##Launching broker
+## Launching broker
 
 ​	For launching the broker, just type `./broker_server IP PORT` , where `IP` matches the address of your broker machine (e.g. 192.168.0.10) and `PORT` matches the port to run the server broker (e.g. 8088). If you plan to **test things locally**, simply typing `make run_boker` will launch the _broker_server_ with default IP localhost address and port 8080.
 

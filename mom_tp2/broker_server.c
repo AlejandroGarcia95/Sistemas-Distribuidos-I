@@ -16,12 +16,66 @@
 #include "libs/socket.h"
 #include "libs/argv_parser.h"
 
-/* We all need to be mocked from time to time, 
- * lest we take ourselves too seriously. */
+// Parsing data from configuration file
+
+typedef struct broker_data {
+	char broker_ip[20];
+	char broker_port[10];
+	char next_ip[20];
+	char next_port[10];
+	size_t broker_id;
+	size_t broker_amount;
+} broker_data_t;
+
+bool parse_broker_data(broker_data_t* bd, char* argv[]){
+	sscanf(argv[2], "%zu", &bd->broker_id);
+	sscanf(argv[3], "%zu", &bd->broker_amount);
+	
+	FILE *fp = fopen (argv[1], "r");
+	if(!fp) {
+		printf("%d: Error opening configuration file %s: %d\n", getpid(), argv[1], errno);
+		return false;
+	}
+	
+	// Loop configuration file trying to find broker IP and port
+	// and the next broker in ring IP and port
+	size_t next_id = (bd->broker_id % bd->broker_amount) + 1;
+	char read_ip[20], read_port[10];
+	size_t read_id;
+	bool read_mine = false, read_next = false;
+	while(!(read_mine && read_next)){
+		if(fscanf(fp, "%zu %s %s", &read_id, read_ip, read_port) < 3)
+			continue;
+		if(read_id == bd->broker_id) {
+			sprintf(bd->broker_ip, "%s", read_ip);
+			sprintf(bd->broker_port, "%s", read_port);
+			read_mine = true;
+		}
+		else if(read_id == next_id) {
+			sprintf(bd->next_ip, "%s", read_ip);
+			sprintf(bd->next_port, "%s", read_port);
+			read_next = true;
+		}
+	}
+	
+	// If here, I have finished scanning the file
+	fclose(fp);
+	if(!read_mine) {
+		printf("%d: Error reading from configuration file %s: broker data not found!\n", getpid(), argv[1]);
+		return false;
+	}
+	
+	if(!read_next) {
+		printf("%d: Error reading from configuration file %s: next data not found!\n", getpid(), argv[1]);
+		return false;
+	}
+	
+	return true;
+}
+
+// Handler for graceful quit
  
 bool keep_looping = true;
-char* broker_ip = NULL;
-char* broker_port = NULL;
 
 void handler(int signum) {
   keep_looping = false;
@@ -57,8 +111,20 @@ bool launch_dbms(ap_t* ap) {
 	return true;
 }
 
+bool launch_ring_master(ap_t* ap) {
+	pid_t pid = fork();
+	if(pid < 0) {
+		printf("%d: Error launching DBMS: %d\n", getpid(), errno);
+		return false;
+	}
+	if(pid == 0) {
+		// If here, this is the ring master
+		ap_exec(ap);
+	}
+	return true;
+}
 
-bool allocate_resources(ap_t** ap_handler, socket_t** s) {
+bool allocate_resources(broker_data_t bd, ap_t** ap_handler, ap_t** ap_rm, socket_t** s) {
 	*ap_handler = ap_create("./broker_handler");
 	if(!*ap_handler){
 		printf("%d: Error creating handler parser:%d\n", getpid(), errno);
@@ -71,16 +137,26 @@ bool allocate_resources(ap_t** ap_handler, socket_t** s) {
 		return false;
 	}
 	
+	*ap_rm = ap_create("./ring_master");
+	if(!*ap_handler){
+		printf("%d: Error creating ring master parser:%d\n", getpid(), errno);
+		return false;
+	}
+	
 	// Create queues for handlers and senders
 	create_temporal(QUEUE_HANDLER);
 	create_temporal(QUEUE_SENDER);
+	create_temporal(QUEUE_RM);
 	int msqid_handler = msq_create(QUEUE_HANDLER);
 	int msqid_sender = msq_create(QUEUE_SENDER);
+	int msqid_rm = msq_create(QUEUE_RM);
 	
 	ap_set_int(ap_dbms, QUEUE_HANDLER, msqid_handler);
 	ap_set_int(ap_dbms, QUEUE_SENDER, msqid_sender);
 	ap_set_int(*ap_handler, QUEUE_HANDLER, msqid_handler);
 	ap_set_int(*ap_handler, QUEUE_SENDER, msqid_sender);
+	ap_set_int(*ap_rm, QUEUE_HANDLER, msqid_handler);
+	ap_set_int(*ap_rm, QUEUE_RM, msqid_rm);
 	
 	// Launch DBMS process
 	launch_dbms(ap_dbms);
@@ -93,27 +169,30 @@ bool allocate_resources(ap_t** ap_handler, socket_t** s) {
 		return false; 
 	}
 	
-	socket_bind(*s, broker_ip, broker_port);
+	socket_bind(*s, bd.broker_ip, bd.broker_port);
 	socket_listen(*s, 0);
-	
 	return true;
 }
 
-void release_resources(ap_t* ap_handler, socket_t* s) {
+void release_resources(ap_t* ap_handler, ap_t* ap_rm, socket_t* s) {
 	socket_destroy(s);
 	
-	int msqid_handler, msqid_sender;
+	int msqid_handler, msqid_sender, msqid_rm;
 		
 	ap_get_int(ap_handler, QUEUE_HANDLER, &msqid_handler);
 	ap_get_int(ap_handler, QUEUE_SENDER, &msqid_sender);
+	ap_get_int(ap_rm, QUEUE_RM, &msqid_rm);
 	
 	msq_destroy(msqid_handler);
 	msq_destroy(msqid_sender);
+	msq_destroy(msqid_rm);
 	
 	ap_destroy(ap_handler);
+	ap_destroy(ap_rm);
 	
 	unlink(QUEUE_HANDLER);
 	unlink(QUEUE_SENDER);
+	unlink(QUEUE_RM);
 }
 
 bool launch_handler(ap_t* ap_handler, socket_t* s){
@@ -142,30 +221,32 @@ bool launch_handler(ap_t* ap_handler, socket_t* s){
 
 void print_help(){
 	printf("USAGE:\n");
-	printf("./broker_server BROKER_IP BROKER_PORT\n");
+	printf("./broker_server CONFIG_FILE BROKER_ID BROKERS_AMOUNT\n");
 }
 
 int main(int argc, char* argv[]){
-	if(argc < 3) {
+	if(argc < 4) {
 		printf("ERROR READING PARAMETERS\n");
 		print_help();
 		return -1;
 	}
 	
-	broker_ip = argv[1];
-	broker_port = argv[2];
+	broker_data_t bd = {0};
+	if(!parse_broker_data(&bd, argv))
+		return -1;
 	
 	// Set handler for graceful quit
 	set_handler();
 	ap_t* ap_handler = NULL;
+	ap_t* ap_rm = NULL;
 	socket_t* s = NULL;
 	
-	if(!allocate_resources(&ap_handler, &s))
+	if(!allocate_resources(bd, &ap_handler, &ap_rm, &s))
 		return -1;
 	
 	int children_amount = 1;
 	keep_looping = true;
-	printf("Broker server is up!\n");
+	printf("Broker server %zu of %zu is up!\n", bd.broker_id, bd.broker_amount);
 	
 	
 	while(keep_looping){
@@ -178,7 +259,7 @@ int main(int argc, char* argv[]){
 	for(int i = 0; i < children_amount; i++)
 		wait(NULL);
 	
-	release_resources(ap_handler, s);
+	release_resources(ap_handler, ap_rm, s);
 	printf("\nBroker server closed.\n");
 	return 0;
 }

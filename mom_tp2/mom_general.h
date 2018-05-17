@@ -11,6 +11,7 @@
 
 #define QUEUE_HANDLER "queue_handler.temp"
 #define QUEUE_SENDER "queue_sender.temp"
+#define QUEUE_RM "queue_rm.temp"
 
 #define SOCKET_FD "socket"
 

@@ -7,7 +7,7 @@ MOM_API = mom.o
 PROGRAM = user_main
 DAEMON_PROCESSES = mom_responser mom_requester mom_forwarder
 MOM_DAEMON = mom_daemon
-BROKER_PROCESSES = dbms broker_handler broker_sender
+BROKER_PROCESSES = dbms broker_handler broker_sender ring_master
 BROKER = broker_server
 
 
@@ -38,8 +38,12 @@ run: clean $(PROGRAM) $(DAEMON_PROCESSES) $(MOM_DAEMON)
 topiclean:
 	rm -r -f Topics
 	rm -f inv_index.txt
-	rm -f CoordTopic.txt
-	rm -f *.dat
+
+broker_instance: $(BROKER) $(BROKER_PROCESSES)
+	mkdir BrokerInstance
+	cp $(BROKER) BrokerInstance
+	for i in $(BROKER_PROCESSES) ; do cp $$i BrokerInstance ; done
+	cp *.txt BrokerInstance
 
 run_broker: $(BROKER)
 	./$(BROKER) 127.0.0.1 8080
@@ -51,12 +55,13 @@ clean:
 	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(BROKER) $(BROKER_PROCESSES)
 	rm -f $(LIBS_O)
 	rm -r -f Topics
+	rm -r -f BrokerInstance
 	rm -f inv_index.txt
 	sh ipcrma.sh
 
 valgrind: clean $(PROGRAM)
 	valgrind $(VFLAGS) ./$(PROGRAM)
 
-.PHONY: clean
+.PHONY: clean topiclean
 
 

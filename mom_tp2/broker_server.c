@@ -155,12 +155,17 @@ bool allocate_resources(broker_data_t bd, ap_t** ap_handler, ap_t** ap_rm, socke
 	ap_set_int(ap_dbms, QUEUE_SENDER, msqid_sender);
 	ap_set_int(*ap_handler, QUEUE_HANDLER, msqid_handler);
 	ap_set_int(*ap_handler, QUEUE_SENDER, msqid_sender);
+	ap_set_int(*ap_handler, QUEUE_RM, msqid_rm);
 	ap_set_int(*ap_rm, QUEUE_HANDLER, msqid_handler);
 	ap_set_int(*ap_rm, QUEUE_RM, msqid_rm);
+	ap_set_int(*ap_rm, BROKER_ID, bd.broker_id);
+	ap_set_int(*ap_rm, BROKER_AMOUNT, bd.broker_amount);
+	ap_set_string(*ap_rm, NEXT_IP, bd.next_ip);
+	ap_set_string(*ap_rm, NEXT_PORT, bd.next_port);
 	
 	// Launch DBMS process
 	launch_dbms(ap_dbms);
-	ap_destroy(ap_dbms);
+	ap_destroy(ap_dbms);	
 	
 	// Create broker side socket
 	*s = socket_create(SOCK_PASSIVE);
@@ -244,9 +249,15 @@ int main(int argc, char* argv[]){
 	if(!allocate_resources(bd, &ap_handler, &ap_rm, &s))
 		return -1;
 	
+	
 	int children_amount = 1;
 	keep_looping = true;
+	
+	if(launch_ring_master(ap_rm))
+		children_amount++;
+		
 	printf("Broker server %zu of %zu is up!\n", bd.broker_id, bd.broker_amount);
+	printf("Connected at %s port %s\n", bd.broker_ip, bd.broker_port);
 	
 	
 	while(keep_looping){

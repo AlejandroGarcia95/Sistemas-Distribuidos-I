@@ -70,10 +70,11 @@ int main(int argc, char* argv[]) {
 		exit(-1);
 	}
 	
-	int socket_fd, msqid_h, msqid_s;
+	int socket_fd, msqid_h, msqid_s, msqid_rm;
 	ap_get_int(ap, SOCKET_FD, &socket_fd);
 	ap_get_int(ap, QUEUE_HANDLER, &msqid_h);
 	ap_get_int(ap, QUEUE_SENDER, &msqid_s);
+	ap_get_int(ap, QUEUE_RM, &msqid_rm);
 	
 	ap_t* ap_sender = create_sender_ap(socket_fd, msqid_h, msqid_s);
 	pid_t s_pid = launch_sender(ap_sender);
@@ -107,9 +108,18 @@ int main(int argc, char* argv[]) {
 		att_rcv = 0;
 		printf("%d: A handler has received a message from a machine!\n", getpid());
 		print_message(m);
-		m.mtype = s_pid;
-		// Forward message to DBMS
-		msq_send(msqid_h, &m, sizeof(mom_message_t));
+		if((m.opcode == OC_BR_CONNECT) || (m.opcode == OC_BR_PUBLISH)) {
+			// Forward message to ring_master
+			msq_send(msqid_rm, &m, sizeof(mom_message_t));
+		}
+		else {
+			// Forward message to DBMS
+			m.mtype = s_pid;
+			msq_send(msqid_h, &m, sizeof(mom_message_t));
+			// If it was a publish, also forward to ring_master
+			if(m.opcode == OC_PUBLISH)
+				msq_send(msqid_rm, &m, sizeof(mom_message_t));
+		}
 	}
 	
 	printf("\nClosing a broker handler (PID: %d)...\n", getpid());

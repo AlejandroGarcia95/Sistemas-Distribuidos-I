@@ -13,10 +13,12 @@
 #define QUEUE_SENDER "queue_sender.temp"
 #define QUEUE_RM "queue_rm.temp"
 
-#define SOCKET_FD "socket"
+#define NEXT_IP "next_ip"
+#define NEXT_PORT "next_port"
+#define BROKER_ID "self_id"
+#define BROKER_AMOUNT "amount"
 
-#define SERVER_IP "127.0.0.1"
-#define SERVER_PORT "8080"
+#define SOCKET_FD "socket"
 
 #define PAYLOAD_SIZE 255
 #define TOPIC_LENGTH 100
@@ -31,7 +33,9 @@ typedef enum opcode_ {
 	OC_DELIVERED = 7, // Used by broker when sending message to all subscribers on topic
 	OC_SEPPUKU = 8, // Used by mom_daemon to tell handler to gracefully die
 	OC_UNSUBSCRIBE = 9,
-	OC_RECEIVE = 10 // To be send to forwarder
+	OC_RECEIVE = 10, // To be send to forwarder
+	OC_BR_CONNECT = 11, // Used by ring_master for starting connection
+	OC_BR_PUBLISH = 12 // Used by ring_master for publishing into other broker
 	} opcode_t;
 	
 
@@ -53,7 +57,8 @@ typedef  struct mom_message_ {
 // Debug purposes only
 void print_message(mom_message_t m){
 	char* oc_str[] = 	{"", "CREATE", "DESTROY", "PUBLISH", "SUBSCRIBE", "ACK_SUCCESS", 
-						"ACK_FAILURE", "DELIVERED", "SEPPUKU", "UNSUBSCRIBE", "RECEIVE"};
+						"ACK_FAILURE", "DELIVERED", "SEPPUKU", "UNSUBSCRIBE", "RECEIVE",
+						"BR_CONNECT", "BR_PUBLISH"};
 	printf("---------------------------------------------------\n");
 	printf("LOCAL ID: %ld\n", m.local_id);
 	printf("GLOBAL ID: %ld\n", m.global_id);

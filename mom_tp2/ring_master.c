@@ -126,7 +126,25 @@ int main(int argc, char* argv[]) {
 		mom_message_t m = {0};
 		msq_rcv(rmd.msqid_rm, &m, sizeof(mom_message_t), 0);
 		printf("%d: Ring master received a message!\n", getpid());
-		print_message(m);
+		if(m.opcode == OC_PUBLISH){
+			// Forward to next broker instance
+			m.global_id = -rmd.broker_id;
+			m.opcode = OC_BR_PUBLISH;
+			SOCKET_S(rmd.s3, mom_message_t, m);
+		}
+		else if(m.opcode == OC_BR_PUBLISH) {
+			// If it is mine, end here
+			if(m.global_id == -rmd.broker_id)
+				continue;
+			// If not, forward to next broker instance and DBMS
+			SOCKET_S(rmd.s3, mom_message_t, m);
+			msq_send(rmd.msqid_dbms, &m, sizeof(mom_message_t));
+		}
+		else {
+			printf("%d: WARNING: Ring master received non-publish message of opcode %d\n", getpid(), m.opcode);
+			continue;
+		}
+		
 	}
 
 	printf("%d: Closing ring master...\n", getpid());

@@ -42,6 +42,9 @@ typedef  struct dbms_data_ {
 bool user_is_registered(mom_message_t* m, long global_id, bool print_warning) { 
 	if(m->global_id < global_id)
 		return true;
+	// Check here if it's another broker message
+	if((m->opcode == OC_BR_PUBLISH) && (m->global_id < 0))
+		return true;
 	if(print_warning)
 		printf("%d: Warning! Some not registered user was trying to make a query!\n", getpid());
 	return false;
@@ -326,6 +329,7 @@ void process_message(mom_message_t* m, dbms_data_t* dd) {
 			
 		// User has published smth
 		case OC_PUBLISH:
+		case OC_BR_PUBLISH:
 			publish_message(m, dd);
 			break;
 		

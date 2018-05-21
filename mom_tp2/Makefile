@@ -44,6 +44,14 @@ broker_instance: $(BROKER) $(BROKER_PROCESSES)
 	cp $(BROKER) BrokerInstance
 	for i in $(BROKER_PROCESSES) ; do cp $$i BrokerInstance ; done
 	cp *.txt BrokerInstance
+	cp ipcrma.sh BrokerInstance
+
+user_instance: $(PROGRAM) $(MOM_DAEMON) $(LIBS_O)
+	mkdir UserInstance
+	cp $(PROGRAM) UserInstance
+	cp $(MOM_DAEMON) UserInstance
+	for i in $(DAEMON_PROCESSES) ; do cp $$i UserInstance ; done
+	cp ipcrma.sh UserInstance
 
 run_broker: $(BROKER)
 	./$(BROKER) 127.0.0.1 8080
@@ -55,6 +63,8 @@ clean:
 	rm -f $(PROGRAM) *.o *.temp $(MOM_DAEMON) $(DAEMON_PROCESSES) $(BROKER) $(BROKER_PROCESSES)
 	rm -f $(LIBS_O)
 	rm -r -f Topics
+	rm -f *.dat
+	rm -r -f UserInstance
 	rm -r -f BrokerInstance
 	rm -f inv_index.txt
 	sh ipcrma.sh

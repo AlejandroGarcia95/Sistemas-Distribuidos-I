@@ -20,7 +20,7 @@
 
 - Every broker machine has its own users and topics' database. Then, the database in every broker machine **is** different. This lack of global consistency makes the implementation rather easy, compared to another implementation able to maintain a global state of the database (i.e. the user machines registered in one broker instance are known in all broker instances). As I saw no purpose in mainting this global consistency (after all, _why_ would I ever want a broker machine to know all users? If the same user registered in some broker instance ever wishes to connect against another broker instance, they'll receive a new global id from that other instance and that's all), I chose simplicity over complexity.
 - The broker instances must be launched **in order**, as they need to create that logical ring of connections in some manner. In my implementation, the last broker of the ring assumes all the previous ones were already launched, and connects with the first one, which in turn will connect to the second and so on. This could have been replaced by a multicast messaging, and would be a nice thing to have.
-- Since a broker instance **cannot** distinguish between a message from a user machine or another broker instance (because both broker instances and user machines connects to other brokers via the _broker_handler_ and _broker_sender_ duo), this needed difference derivated in new message types.
+- Since a broker instance **cannot** distinguish between a message from a user machine or another broker instance (because both broker instances and user machines connects to other brokers via the _broker_handler_ and _broker_sender_ duo), this needed difference derivated into new message types.
 - The next strong hypothesis was used: a user machine **can only connect with one broker instance at a time**. If this weren't true, then the user would have to choose which broker instance they want to connect via the MOM API, also forcing their local _mom_daemon_ to maintain more than just one connection, making things too nasty for programming. 
 
 ## Working flow
@@ -38,3 +38,23 @@
 ​	The flow is summed up in the next sequence diagram:
 
 ![](sequence.png)
+
+## Compiling
+
+​	For compiling the whole TP, simply run the `make` command on this `mom_tp2` directory. However, if you just **want everything ready to distribute** you can run `make broker_instance` and `make user_instance`. This commands will create two folders, with every file you need to locate on a broker or user machine, respectively.
+
+## Launching broker
+
+​	For launching a broker instance, just type `./broker_server CONFIG_FILE BROKER_ID BROKER_AMOUNT` , where `CONFIG_FILE` matches the address configuration file which specifies every IP address and port of every broker instance in the ring (with the same format as the provided _ring_conf.txt_ file),   `BROKER_ID` is the current id of your broker instance, and `BROKER_AMOUNT` the amount of broker instances to include in the ring (the broker id, as discussed, ranges from 1 to `BROKER_AMOUNT`).
+
+​	Note: For stopping the _broker_server_, hit `CTRL+C`.
+
+## Launching daemon
+
+​	After launching all the brokers, you can launch the _mom_daemon_ on a user machine by typing `./mom_daemon IP PORT` , where `IP` matches the address of one of your broker instances' machines and `PORT` matches the port. 
+
+​	Note: For stopping the _mom_daemon_, hit `CTRL+C`.
+
+## Testing something!
+
+​	An executable _user_main_ file is also including to test the MOM behaivour. By running it with `./user_main` , you will be provided a little in-screen help for performing the MOM API calls. You could, let's say, launch several instances of this program, subscribe all of them to some random topics, and publish-receive to exchange messages.
